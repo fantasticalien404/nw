@@ -48,22 +48,22 @@ Data API
 
 The Google Sheet serves as both the database and the manual data-entry interface. It stores all information required by the system.
 
-### Tab 1: Transactions
+### Tab 1: cashflow
 
-Contains all income, expenses, dividends, taxes, transfers, and cash movements. One row represents one transaction.
+Contains all income, expenses, and investment contributions. One row represents one transaction.
 
 #### Structure
 
-| Date | Type | Category | Subcategory | Account | Amount | Currency | Notes |
-| --- | --- | --- | --- | --- | ---: | --- | --- |
+| DATE | TYPE | NAME | AMOUNT | CURRENCY | CATEGORY | SUBCATEGORY | NOTES |
+| --- | --- | --- | ---: | --- | --- | --- | --- | --- |
 
-#### Examples
+`Type` is one of `income`, `expense`, or `contribution`. Amounts are always positive; type determines the cash-flow direction. Use `tax` as an `expense` category and `withdrawal` as an `income` category.
 
-| Date | Type | Category | Subcategory | Account | Amount |
-| --- | --- | --- | --- | --- | ---: |
-| 2026-10-01 | Expense | Food | Grocery | UBS | -45 |
-| 2026-10-25 | Income | Salary | Salary | UBS | 4,500 |
-| 2026-10-29 | Dividend | ETF Dividend | CSPX | IBKR | 38 |
+#### Investment cash flows
+
+Use `contribution` when money enters the invested portfolio from outside it. Record the transaction date, amount, and currency. Contributions are used as external cash flows for performance calculations, but are balance transfers rather than expenses: exclude them from spending, income, savings-rate, and category reports.
+
+Record money leaving the invested portfolio as an `income` transaction with the `withdrawal` category. The performance calculation treats this category as an external portfolio withdrawal, while income reporting includes it as income. Purchases, sales, dividends, fees, and taxes remain internal to the investment platform and are not recorded in `cashflow`.
 
 #### Purpose
 
@@ -71,95 +71,61 @@ Contains all income, expenses, dividends, taxes, transfers, and cash movements. 
 - Income tracking
 - Savings-rate calculation
 - Monthly cash-flow analysis
+- Investment cash-flow tracking
 - Spending categories
 - Historical trends
 - Sankey visualizations
 
-### Tab 2: Portfolio Snapshots
 
-Contains portfolio holdings at each reporting date. Record a monthly, end-of-month snapshot. One row represents one instrument position.
+### Tab 2: assets
 
-#### Structure
+The tab is divided into financial assets and accounts. Each row represents one asset or account, and each date column represents a reporting period.
 
-| Snapshot Date | Broker | Ticker | Shares |
-| --- | --- | --- | ---: |
+The value in each reporting-period cell is interpreted according to `Datatype`:
 
-#### Examples
-
-| Snapshot Date | Broker | Ticker | Shares |
-| --- | --- | --- | ---: |
-| 2026-10-31 | IBKR | CSPX | 125 |
-| 2026-10-31 | IBKR | ZPRV | 85 |
-| 2026-10-31 | IBKR | AVUV | 40 |
-
-#### Purpose
-
-- Portfolio valuation
-- Allocation analysis
-- Historical net worth
-- Performance charts
-- Asset-class exposure
-
-### Tab 3: Cash Snapshots
-
-Contains balances for all bank and cash accounts. One row represents one account balance at a specific reporting date.
+- `quantity`: number of units held. For ticker-based financial products, the backend retrieves the historical market price for the reporting period and calculates market value as quantity × price.
+- `cash`: reported cash balance.
+- `value`: reported market value for non-ticker assets or manually valued assets.
 
 #### Structure
 
-| Snapshot Date | Account | Currency | Balance |
-| --- | --- | --- | ---: |
+| ASSET | DATATYPE | CURRENCY | ACCOUNT | Reporting Period | Reporting Period | ... |
+| --- | --- | --- | --- | --- | --- | --- |
 
-#### Examples
+#### Example
 
-| Snapshot Date | Account | Balance |
-| --- | --- | ---: |
-| 2026-10-31 | UBS CHF | 18,000 |
-| 2026-10-31 | Neon | 2,400 |
-| 2026-10-31 | Wise EUR | 6,000 |
+| Asset | Datatype | Currency | Account | 01-01-2026 |
+| --- | --- | --- | --- | --- |
+| VT | quantity | USD | IB | 24 |
+| Cash | cash | EUR | Unicredit Bank | 20000 |
+| Cae | value | EUR | - | 1000 |
+
+Historical FX rates are used to convert every reporting-period value to the base currency. The corresponding historical price is also used for `quantity` assets. Use ISO 4217 currency codes such as `USD`; `DOL` is accepted as a legacy alias for `USD`.
+
+
 
 #### Purpose
 
 - Cash allocation
-- Net-worth reconstruction
+- Net-worth reconstruction and trend tracking across reporting periods
 - Liquidity monitoring
-
-### Tab 4: Assets
-
-A reference table describing each held asset.
-
-#### Structure
-
-| Ticker | Name | Asset Class | Region | Currency | Benchmark |
-| --- | --- | --- | --- | --- | --- |
-
-#### Examples
-
-| Ticker | Asset Class |
-| --- | --- |
-| CSPX | Equity |
-| ZPRV | Equity |
-| AGGG | Bond |
-| IGLN | Gold |
-
-#### Purpose
-
 - Asset allocation
 - Asset grouping
 - Exposure reports
 - Portfolio analytics
 
-### Tab 5: Categories
+### Tab 3: categories
 
 A reference table for organizing expenses.
 
 #### Structure
 
-| Category | Parent Category |
+| CATEGORY | PARENT_CATEGORY |
 | --- | --- |
 
 #### Examples
 
-| Category | Parent Category |
+| CATEGORY | PARENT_CATEGORY |
 | --- | --- |
 | Grocery | Food |
 | Restaurants | Food |
@@ -174,32 +140,23 @@ A reference table for organizing expenses.
 - Budget analysis
 - Long-term spending statistics
 
-### Tab 6: Asset Allocation Targets
+### Tab 4: saa
 
-Contains historical target allocations. Unlike a static target, this time series allows the investment policy to evolve over time.
+Contains historical target allocations. Unlike a static target, this time series allows the investment policy to evolve over time. Each reporting-period column contains the target percentage for the corresponding asset or instrument.
+
+Targets do not need to total $100\%$. The allocation dashboard calculates drift against each target independently.
 
 #### Structure
 
-| Effective Date | Asset Class | Target Weight |
-| --- | --- | ---: |
+| ASSET_CLASS | INSTRUMENT | Reporting Period | Reporting Period | ... |
+| --- | --- | --- | --- | --- |
 
-#### Initial Policy
+#### Example
 
-| Effective Date | Asset Class | Target Weight |
-| --- | --- | ---: |
-| 2026-01-01 | Equity | 90% |
-| 2026-01-01 | Bonds | 0% |
-| 2026-01-01 | Gold | 5% |
-| 2026-01-01 | Cash | 5% |
-
-#### Future Policy
-
-| Effective Date | Asset Class | Target Weight |
-| --- | --- | ---: |
-| 2030-01-01 | Equity | 80% |
-| 2030-01-01 | Bonds | 10% |
-| 2030-01-01 | Gold | 5% |
-| 2030-01-01 | Cash | 5% |
+| ASSET_CLASS | INSTRUMENT | 01-01-2020 | 01-01-2021 |
+| --- | --- | ---: | ---: |
+| equities | VT | 0.9 | 0.8 |
+| equities | VTI | 0.1 | 0.2 |
 
 #### Purpose
 
@@ -210,14 +167,13 @@ Contains historical target allocations. Unlike a static target, this time series
 
 The dashboard always uses the latest target configuration applicable on each date.
 
-### Tab 7: Constants
+### Tab 5: costants
 
 Contains system-wide constants and settings.
 
 #### Structure
 
-| Key | Value |
-| --- | --- |
+Each row has a constant key in column A and its value in column B; this tab has no header row.
 
 #### Examples
 
@@ -232,17 +188,21 @@ Contains system-wide constants and settings.
 
 Centralizes configuration and avoids hardcoded application parameters.
 
-### Tab 8: Summary (Auto-Generated)
+## Workbook Validation
 
-This tab is not edited manually. Formulas or scripts generate it to provide convenient Google Sheets checks, such as:
+Run the Google Sheets validation after changing workbook data:
 
-- Monthly expenses
-- Monthly income
-- Savings rate
-- Net-worth history
-- Category totals
+```bash
+npm run test:sheets
+```
 
-The dashboard remains the primary reporting interface.
+The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. It validates all five tabs:
+
+- `cashflow`: required column names (case-insensitive); required values; allowed types; positive numeric amounts; three-letter uppercase currency codes.
+- `assets`: required columns; ascending Google Sheets reporting-period dates; allowed datatypes; non-negative values.
+- `categories`: `CATEGORY` and `PARENT_CATEGORY` columns with values in every row.
+- `saa`: `ASSET_CLASS` and `INSTRUMENT` columns; ascending reporting-period dates; non-negative targets without requiring a $100\%$ total.
+- `costants`: no header row; a non-empty key and value in every row.
 
 ## Market Data Layer
 
