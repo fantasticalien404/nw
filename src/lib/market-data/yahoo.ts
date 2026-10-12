@@ -7,6 +7,19 @@ type YahooChartResponse = {
   };
 };
 
+type YahooSearchResponse = {
+  quotes?: Array<{
+    symbol?: string;
+    longname?: string;
+    shortname?: string;
+  }>;
+};
+
+type YahooInstrument = {
+  name: string;
+  url: string;
+};
+
 function unixSeconds(date: string) {
   return Math.floor(new Date(`${date}T00:00:00Z`).getTime() / 1000);
 }
@@ -62,6 +75,32 @@ export async function getYahooLatestPrice(symbol: string) {
   }
 
   return close;
+}
+
+export function getYahooInstrumentUrl(symbol: string) {
+  return `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`;
+}
+
+export async function getYahooInstrument(symbol: string): Promise<YahooInstrument> {
+  const url = new URL("https://query1.finance.yahoo.com/v1/finance/search");
+  url.searchParams.set("q", symbol);
+  url.searchParams.set("quotesCount", "1");
+  url.searchParams.set("newsCount", "0");
+
+  const response = await fetch(url, { next: { revalidate: 86_400 } });
+  if (!response.ok) {
+    throw new Error(`Yahoo Finance did not return instrument details for ${symbol}.`);
+  }
+
+  const body = (await response.json()) as YahooSearchResponse;
+  const quote = body.quotes?.find((entry) => entry.symbol === symbol) ?? body.quotes?.[0];
+  const name = quote?.longname ?? quote?.shortname;
+
+  if (!name) {
+    throw new Error(`Yahoo Finance has no instrument name for ${symbol}.`);
+  }
+
+  return { name, url: getYahooInstrumentUrl(symbol) };
 }
 
 export async function getYahooFxRate(fromCurrency: string, toCurrency: string, date: string) {

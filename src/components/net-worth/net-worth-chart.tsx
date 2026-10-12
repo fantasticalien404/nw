@@ -53,7 +53,7 @@ export function NetWorthChart({ report }: NetWorthChartProps) {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 id="net-worth-trend-heading" className="text-xl font-medium tracking-tight text-black">
-            Net-worth trend
+            Trend
           </h2>
           <p className="mt-1 text-sm text-zinc-600">Reporting periods through current value</p>
         </div>

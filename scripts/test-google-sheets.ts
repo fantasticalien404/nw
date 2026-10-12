@@ -54,7 +54,10 @@ async function main() {
     "subcategory",
     "notes",
   ];
-  const actualHeaders = headers.map((header) => String(header).trim().toLowerCase());
+  const actualHeaders = headers.map((header, index) => {
+    const value = String(header).trim().toLowerCase();
+    return index === 6 && value === "city" ? "subcategory" : value;
+  });
 
   if (actualHeaders.join("|") !== expectedHeaders.join("|")) {
     throw new Error(
@@ -67,12 +70,12 @@ async function main() {
 
   for (const [index, row] of cashflowRows.entries()) {
     const rowNumber = index + 2;
-    const [date, type, name, amount, currency, category] = row.map((value) =>
+    const [date, type, name, amount, currency] = row.map((value) =>
       String(value).trim(),
     );
 
-    if (!date || !type || !name || !amount || !currency || !category) {
-      errors.push(`Row ${rowNumber}: date, transaction type, name, amount, currency, and category are required.`);
+    if (!date || !type || !name || !amount || !currency) {
+      errors.push(`Row ${rowNumber}: date, transaction type, name, amount, and currency are required.`);
       continue;
     }
 
@@ -82,8 +85,8 @@ async function main() {
 
     const numericAmount = Number(amount);
 
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      errors.push(`Row ${rowNumber}: amount "${amount}" must be a positive number.`);
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+      errors.push(`Row ${rowNumber}: amount "${amount}" must be a non-negative number.`);
     }
 
     if (!/^[A-Z]{3}$/.test(currency)) {
@@ -183,8 +186,8 @@ async function main() {
 
   console.log("Assets schema and values are valid.");
 
-  const [constantsResponse, saaResponse, categoriesResponse] = await Promise.all(
-    ["costants!A:B", "saa!A:Z", "categories!A:B"].map((range) =>
+  const [constantsResponse, saaResponse, categoriesResponse, metadataResponse] = await Promise.all(
+    ["costants!A:B", "saa!A:Z", "categories!A:B", "metadata!A:F"].map((range) =>
       sheets.spreadsheets.values.get({
         spreadsheetId: process.env.GOOGLE_SHEET_ID,
         range,
@@ -195,6 +198,7 @@ async function main() {
   const constants = constantsResponse.data.values ?? [];
   const saaRows = saaResponse.data.values ?? [];
   const categoryRows = categoriesResponse.data.values ?? [];
+  const metadataRows = metadataResponse.data.values ?? [];
   const otherErrors: string[] = [];
 
   if (constants.length === 0) {
@@ -259,14 +263,50 @@ async function main() {
       otherErrors.push(`Invalid categories headers. Expected: ${expectedCategoryHeaders.join(", ")}.`);
     }
 
+    const categoryKeys = new Set<string>();
     for (const [index, category] of categories.entries()) {
-      if (!String(category[0] ?? "").trim() || !String(category[1] ?? "").trim()) {
+      const key = String(category[0] ?? "").trim();
+      const parent = String(category[1] ?? "").trim();
+      if (!key || !parent) {
         otherErrors.push(`categories row ${index + 2}: category and parent category are required.`);
+      } else if (categoryKeys.has(key)) {
+        otherErrors.push(`categories row ${index + 2}: duplicate category "${key}".`);
+      } else {
+        categoryKeys.add(key);
+      }
+    }
+
+    for (const [index, cashflowRow] of cashflowRows.entries()) {
+      const category = String(cashflowRow[5] ?? "").trim();
+      if (category && !categoryKeys.has(category)) {
+        otherErrors.push(`cashflow row ${index + 2}: unknown category "${category}".`);
       }
     }
   }
 
-  console.log(`Found ${constants.length} constants, ${Math.max(saaRows.length - 1, 0)} SAA rows, and ${Math.max(categoryRows.length - 1, 0)} category rows`);
+  if (metadataRows.length < 2) {
+    otherErrors.push("The metadata tab must contain a header row and at least one instrument row.");
+  } else {
+    const [metadataHeaders, ...instruments] = metadataRows;
+    const expectedMetadataHeaders = ["ticker", "display_name", "full_name", "currency", "ter", "issuer"];
+    const actualMetadataHeaders = metadataHeaders.map((header) => String(header).trim().toLowerCase());
+
+    if (actualMetadataHeaders.join("|") !== expectedMetadataHeaders.join("|")) {
+      otherErrors.push(`Invalid metadata headers. Expected: ${expectedMetadataHeaders.join(", ")}.`);
+    }
+
+    for (const [index, instrument] of instruments.entries()) {
+      const [ticker, , fullName, currency, ter, issuer] = instrument.map((value) => String(value ?? "").trim());
+      if (!ticker || !fullName || !currency || !ter || !issuer) {
+        otherErrors.push(`metadata row ${index + 2}: ticker, full name, currency, TER, and issuer are required.`);
+      }
+      if (currency && !/^[A-Z]{3}$/.test(currency)) {
+        otherErrors.push(`metadata row ${index + 2}: currency must be a three-letter uppercase code.`);
+      }
+    }
+  }
+
+  console.log(`Found ${constants.length} constants, ${Math.max(saaRows.length - 1, 0)} SAA rows, ${Math.max(categoryRows.length - 1, 0)} category rows, and ${Math.max(metadataRows.length - 1, 0)} metadata rows`);
 
   if (otherErrors.length > 0) {
     throw new Error(`Constants, SAA, or categories validation failed:\n${otherErrors.join("\n")}`);

@@ -13,36 +13,51 @@ Create a fully customizable personal-finance platform comprising:
 
 Enter data manually once, store it in a simple and transparent format, and let the application calculate everything else automatically.
 
-## High-Level Architecture
+## Implemented Architecture
 
 ```text
-┌──────────────────┐
-│  Google Sheets   │
-│ (Data Entry DB)  │
-└────────┬─────────┘
-         │ Google Sheets API
-         ▼
-┌──────────────────┐
-│ Next.js Backend  │
-│   API Routes     │
-└────────┬─────────┘
-         │
-┌────────┼───────────────┐
-│        │               │
-▼        ▼               ▼
-Market    FX Rates API   Asset Metadata
-Data API
-│
-▼
-┌──────────────────┐
-│ Analytics Layer  │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ React Dashboard  │
-└──────────────────┘
+Google Sheets (read-only from the app)
+  ├── cashflow, categories, costants
+  │       ↓ Sheets parsers + historical FX conversion
+  │       ↓ pure cashflow analytics
+  │       └── /cashflow server page → Recharts dashboard
+  │
+  └── assets, metadata, costants
+          ↓ Sheets parsers + Yahoo historical/current prices and FX
+          ↓ pure net-worth analytics
+          └── /nw server page → table and trend chart
 ```
+
+The application is a Next.js App Router project. Route pages are server components: they load and validate workbook data, call market-data adapters where necessary, build serializable reports, and pass those reports to small client chart components. React components never call Google Sheets or Yahoo Finance directly.
+
+### Current implementation
+
+| Route | Server workflow | UI |
+| --- | --- | --- |
+| `/nw` | Parse `assets`, `metadata`, and `costants`; price ticker holdings with Yahoo Finance; convert historical and current values to three reporting currencies | Net-worth trend, instrument/cash/other-assets table, totals, absolute and percentage changes |
+| `/cashflow` | Parse `cashflow`, `categories`, and `costants`; convert transactions into `CURRENCY_1` using historical FX; aggregate in pure analytics | Income/expense trend, annual income and spending tables, category area chart, savings rate, and cumulative cashflow |
+
+### Module boundaries
+
+- `src/lib/sheets`: Google Sheets I/O, workbook header validation, parsing, and normalization.
+- `src/lib/market-data`: Yahoo Finance adapter and cached historical/current price and FX lookup.
+- `src/lib/analytics`: deterministic calculations only; no external I/O.
+- `src/app`: server pages that compose loaders, market-data conversion, analytics, and views.
+- `src/components`: presentational tables and client-side Recharts visualizations.
+- `scripts/test-google-sheets.ts`: executable workbook-contract validation.
+
+### Libraries
+
+| Library | Role |
+| --- | --- |
+| Next.js 16 | App Router, server rendering, request caching |
+| React 19 | UI composition and client chart components |
+| TypeScript | Typed boundaries between parsing, analytics, and UI |
+| Tailwind CSS 4 | Utility-first styling |
+| Recharts | Interactive line and area charts |
+| googleapis | Service-account Google Sheets client |
+| TSX | TypeScript workbook-validation script runner |
+| ESLint | Static code-quality checks |
 
 ## Google Sheets Structure
 
@@ -57,7 +72,7 @@ Contains all income, expenses, and investment contributions. One row represents 
 | DATE | TYPE | NAME | AMOUNT | CURRENCY | CATEGORY | SUBCATEGORY | NOTES |
 | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
 
-`Type` is one of `income`, `expense`, or `contribution`. Amounts are always positive; type determines the cash-flow direction. Use `tax` as an `expense` category and `withdrawal` as an `income` category.
+`Type` is one of `income`, `expense`, or `contribution`. Amounts are non-negative; type determines the cash-flow direction. Expense categories must exactly match an entry in the `categories` tab; leave uncertain categories blank until they are assigned. Use `tax` as an `expense` category and `withdrawal` as an `income` category.
 
 #### Investment cash flows
 
@@ -65,16 +80,13 @@ Use `contribution` when money enters the invested portfolio from outside it. Rec
 
 Record money leaving the invested portfolio as an `income` transaction with the `withdrawal` category. The performance calculation treats this category as an external portfolio withdrawal, while income reporting includes it as income. Purchases, sales, dividends, fees, and taxes remain internal to the investment platform and are not recorded in `cashflow`.
 
-#### Purpose
+#### Dashboard workflow
 
-- Expense tracking
-- Income tracking
-- Savings-rate calculation
-- Monthly cash-flow analysis
-- Investment cash-flow tracking
-- Spending categories
-- Historical trends
-- Sankey visualizations
+1. The app reads the transactions and excludes `contribution` rows from income, expense, savings, and category reporting.
+2. Every transaction is converted to `CURRENCY_1` at the historical FX rate for its date.
+3. The dashboard reports the latest transaction year and includes every January–December month. Missing or future months display as `—` and chart as gaps.
+4. Income and expenses are aggregated monthly. Expense category aggregation uses `CATEGORY → PARENT_CATEGORY`; blank categories remain unclassified rather than being guessed.
+5. Savings are $income - expenses$ and the monthly savings rate is $savings / income$ when income is non-zero.
 
 
 ### Tab 2: assets
@@ -114,7 +126,14 @@ Historical FX rates are used to convert every reporting-period value to the base
 - Exposure reports
 - Portfolio analytics
 
-### Tab 3: categories
+### Tab 3: metadata
+
+Provides financial-instrument reference data. `TICKER` must match the `ASSET` value for a `quantity` row in `assets`. `DISPLAY_NAME` is optional; the net-worth table uses it when present, otherwise `FULL_NAME`, and falls back to Yahoo Finance only when neither is supplied. Instrument names link to the Yahoo Finance quote page.
+
+| TICKER | DISPLAY_NAME | FULL_NAME | CURRENCY | TER | ISSUER |
+| --- | --- | --- | --- | --- | --- |
+
+### Tab 4: categories
 
 A reference table for organizing expenses.
 
@@ -140,7 +159,7 @@ A reference table for organizing expenses.
 - Budget analysis
 - Long-term spending statistics
 
-### Tab 4: saa
+### Tab 5: saa
 
 Contains historical target allocations. Unlike a static target, this time series allows the investment policy to evolve over time. Each reporting-period column contains the target percentage for the corresponding asset or instrument.
 
@@ -167,9 +186,9 @@ Targets do not need to total $100\%$. The allocation dashboard calculates drift 
 
 The dashboard always uses the latest target configuration applicable on each date.
 
-### Tab 5: costants
+### Tab 6: costants
 
-Contains system-wide constants and settings.
+Contains system-wide constants and settings. `CURRENCY_1` is required and drives cashflow reporting; `CURRENCY_2` and `CURRENCY_3` are optional secondary net-worth totals.
 
 #### Structure
 
@@ -188,6 +207,15 @@ Each row has a constant key in column A and its value in column B; this tab has 
 
 Centralizes configuration and avoids hardcoded application parameters.
 
+## Development Workflow
+
+1. Enter or correct data in Google Sheets. The app never writes financial data to the workbook.
+2. Keep `cashflow.CATEGORY` equal to a `categories.CATEGORY` value. Leave an uncertain category blank; do not guess a mapping.
+3. Maintain instrument names and reference data in `metadata`; use `DISPLAY_NAME` only when a shorter dashboard label is desired.
+4. Run workbook validation before working on dependent calculations or UI.
+5. Keep external I/O in Sheets/market-data modules, calculations in analytics modules, and rendering in pages/components.
+6. Validate code changes with linting and TypeScript before release.
+
 ## Workbook Validation
 
 Run the Google Sheets validation after changing workbook data:
@@ -196,10 +224,11 @@ Run the Google Sheets validation after changing workbook data:
 npm run test:sheets
 ```
 
-The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. It validates all five tabs:
+The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. The current service account needs spreadsheet **Viewer** access because the product is read-only. It validates all six tabs:
 
-- `cashflow`: required column names (case-insensitive); required values; allowed types; positive numeric amounts; three-letter uppercase currency codes.
+- `cashflow`: required column names (case-insensitive); required values; allowed types; non-negative numeric amounts; three-letter uppercase currency codes; non-empty categories must exist in `categories`.
 - `assets`: required columns; ascending Google Sheets reporting-period dates; allowed datatypes; non-negative values.
+- `metadata`: `TICKER`, `DISPLAY_NAME`, `FULL_NAME`, `CURRENCY`, `TER`, and `ISSUER` columns; all fields except `DISPLAY_NAME` are required.
 - `categories`: `CATEGORY` and `PARENT_CATEGORY` columns with values in every row.
 - `saa`: `ASSET_CLASS` and `INSTRUMENT` columns; ascending reporting-period dates; non-negative targets without requiring a $100\%$ total.
 - `costants`: no header row; a non-empty key and value in every row.

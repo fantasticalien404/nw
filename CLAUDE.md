@@ -21,6 +21,7 @@ Tab names are lowercase and fixed:
 - `cashflow`
 - `assets`
 - `categories`
+- `metadata`
 - `saa`
 - `costants` (intentional spelling)
 
@@ -30,11 +31,14 @@ Header row, in this order:
 
 `DATE`, `TYPE`, `NAME`, `AMOUNT`, `CURRENCY`, `CATEGORY`, `SUBCATEGORY`, `NOTES`.
 
+The seventh header may be `CITY` as a legacy alias for `SUBCATEGORY`.
+
 - `TYPE`: `income`, `expense`, or `contribution`.
-- Amounts are positive. Type determines direction.
+- Amounts are non-negative. Type determines direction.
 - `contribution` is an external inflow into the invested portfolio. Exclude it from income, spending, savings-rate, and category reporting; include it in performance cash-flow calculations.
 - An investment withdrawal is `income` with category `withdrawal`. It is income for cashflow reports but an external portfolio outflow for performance calculations.
 - `tax` is an `expense` category.
+- Non-empty `CATEGORY` values must exactly match `categories.CATEGORY`; uncertain values stay blank and are counted as unclassified expenses.
 - Purchases, sales, dividends, fees, and taxes managed inside the investment platform are not cashflow rows.
 
 ### `assets`
@@ -49,7 +53,13 @@ The first four headers are `ASSET`, `DATATYPE`, `CURRENCY`, `ACCOUNT`; remaining
 
 ### `categories`
 
-Headers: `CATEGORY`, `PARENT_CATEGORY`.
+Headers: `CATEGORY`, `PARENT_CATEGORY`. `CATEGORY` values are unique and are the only valid non-empty expense categories in `cashflow`.
+
+### `metadata`
+
+Headers: `TICKER`, `DISPLAY_NAME`, `FULL_NAME`, `CURRENCY`, `TER`, `ISSUER`.
+
+`TICKER` identifies the corresponding `assets.ASSET` ticker. Every field except `DISPLAY_NAME` is required. Net-worth displays `DISPLAY_NAME` when supplied, otherwise `FULL_NAME`; it uses Yahoo Finance metadata only as a final fallback. Ticker symbols remain in a dedicated table column.
 
 ### `saa`
 
@@ -58,6 +68,51 @@ First headers: `ASSET_CLASS`, `INSTRUMENT`; remaining columns are ascending repo
 ### `costants`
 
 No header row. Column A is the key and column B is the value.
+
+## Architecture and Methodology
+
+### Data flow
+
+```text
+Google Sheets → lib/sheets → lib/market-data → lib/analytics → app route → components
+```
+
+- `lib/sheets` is the only location for Google Sheets I/O, schemas, date parsing, and workbook normalization.
+- `lib/market-data` is the only location for external Yahoo Finance price and FX calls. Use Next fetch revalidation for caching.
+- `lib/analytics` contains pure, deterministic report builders. Do not put I/O, React code, or environment access there.
+- `src/app` pages are server components that compose loaders, market-data conversion, and analytics, then provide serializable reports to UI components.
+- `src/components` renders the reports. Client components may own Recharts interaction state but never fetch financial data.
+
+### Implemented routes
+
+- `/nw`: parses `assets`, `metadata`, and `costants`; prices quantity rows with Yahoo historical/current prices; converts values using historical/current FX; renders the net-worth trend and full reporting-period table.
+- `/cashflow`: parses `cashflow`, `categories`, and `costants`; converts each transaction to `CURRENCY_1` at its historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
+
+### Calculation rules
+
+- `quantity` assets are valued as quantity × Yahoo price; `cash` and `value` assets use reported values.
+- Net-worth tables calculate totals independently in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; missing Yahoo values are `—` and surface a warning.
+- Cashflow expense aggregation is `CATEGORY → PARENT_CATEGORY`. Blank categories are never inferred.
+- Cashflow savings are $income - expenses$ and saving rate is $savings / income$ when income is non-zero.
+- Cashflow monthly averages include every month in the latest report year, including missing/future months as zero for the average, while the table continues to show those months as `—`.
+
+### Libraries
+
+- Next.js 16 App Router and React 19 for server/client UI boundaries.
+- TypeScript for typed module boundaries.
+- Tailwind CSS 4 for styling.
+- Recharts for all interactive charts.
+- `googleapis` for the service-account Google Sheets client.
+- Yahoo Finance chart/search endpoints through replaceable adapters for price, FX, and fallback instrument metadata.
+- `tsx` for workbook validation and ESLint for static checks.
+
+### Required workflow
+
+1. Update the workbook manually; never persist app-derived data back to Sheets.
+2. Run `npm run test:sheets` after any workbook/schema/parser change.
+3. Keep external I/O, calculations, and rendering in their respective layers.
+4. Run `npm run lint` and `npx tsc --noEmit` after code changes.
+5. Do not print, commit, or expose environment values, spreadsheet identifiers, or service-account credentials.
 
 ## Authentication
 
@@ -122,8 +177,8 @@ Use Recharts for every interactive data visualization.
 Primary pages:
 
 1. Home overview: net worth, monthly cash flow, savings rate, portfolio value, allocation drift, FIRE progress.
-2. Income, expenses, and cashflow dashboard: keep contributions separate from income and expenses.
-3. Net worth dashboard (`/nw`): show financial instruments, cash assets, and other assets in separate table sections. First columns are asset and currency; subsequent columns are every assets reporting period plus a final current period. The current period uses latest Yahoo Finance prices; cash and manually valued assets use their latest reported values. Use historical Yahoo prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if Yahoo data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display the absolute change for every reporting period in `CURRENCY_1`, calculated as the period total minus the immediately preceding period total. 
+2. Cashflow dashboard (`/cashflow`): keep contributions separate from income and expenses. Show all January–December months of the latest transaction year; missing/future values are `—`. Include income, parent-category expense, savings, and savings-rate tables with total and monthly-average columns. Monthly averages end at the previous month. Show monthly income/expense, parent-category area, savings-rate, and current-year cumulative income-versus-expense charts.
+3. Net worth dashboard (`/nw`): show financial instruments, cash assets, and other assets in separate table sections. The first columns are asset name, ticker, and currency; subsequent columns are every assets reporting period plus a final current period. The current period uses latest Yahoo Finance prices; cash and manually valued assets use their latest reported values. Quantity rows use `metadata.DISPLAY_NAME`, then `metadata.FULL_NAME`, then Yahoo Finance as fallback. Use historical Yahoo prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if Yahoo data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display absolute and percentage period-over-period changes in `CURRENCY_1`.
 4. Portfolio performance and allocation: benchmark comparison, contributions, returns, target versus actual allocation, drift, and eventual look-through exposure.
 5. Monte Carlo: FIRE success probability, terminal-value distribution, sequence-of-returns scenarios, Value at Risk, and configurable assumptions.
 6. Admin/settings outside the main navbar: data refresh, constants, benchmark, cache, and data-quality checks.

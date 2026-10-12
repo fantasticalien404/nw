@@ -1,5 +1,7 @@
 import {
   getYahooFxRate,
+  getYahooInstrument,
+  getYahooInstrumentUrl,
   getYahooLatestFxRate,
   getYahooLatestPrice,
   getYahooPrice,
@@ -10,6 +12,8 @@ export type NetWorthRow = {
   asset: string;
   currency: string;
   datatype: AssetRow["datatype"];
+  instrumentName: string | null;
+  instrumentUrl: string | null;
   values: Array<number | null>;
 };
 
@@ -19,6 +23,7 @@ export type NetWorthReport = {
   rows: NetWorthRow[];
   totals: Array<Array<number | null>>;
   absoluteChanges: Array<number | null>;
+  percentageChanges: Array<number | null>;
   warnings: string[];
 };
 
@@ -85,7 +90,32 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
         }),
       );
 
-      return { asset: asset.asset, currency: asset.currency, datatype: asset.datatype, values };
+      let instrumentName: string | null = null;
+      let instrumentUrl: string | null = null;
+
+      if (asset.datatype === "quantity") {
+        instrumentName = asset.displayName ?? asset.fullName;
+        instrumentUrl = getYahooInstrumentUrl(asset.asset);
+
+        if (!instrumentName) {
+          try {
+            const instrument = await getYahooInstrument(asset.asset);
+            instrumentName = instrument.name;
+            instrumentUrl = instrument.url;
+          } catch (error) {
+            warnings.push(error instanceof Error ? error.message : `Unable to load ${asset.asset} details.`);
+          }
+        }
+      }
+
+      return {
+        asset: asset.asset,
+        currency: asset.currency,
+        datatype: asset.datatype,
+        instrumentName,
+        instrumentUrl,
+        values,
+      };
     }),
   );
   const totals = await Promise.all(
@@ -126,6 +156,12 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
     const previous = primaryTotals[index - 1];
     return index === 0 || value === null || previous === null ? null : value - previous;
   });
+  const percentageChanges = primaryTotals.map((value, index) => {
+    const previous = primaryTotals[index - 1];
+    return index === 0 || value === null || previous === null || previous === 0
+      ? null
+      : ((value - previous) / previous) * 100;
+  });
 
   return {
     currencies: workbook.currencies,
@@ -133,6 +169,7 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
     rows,
     totals,
     absoluteChanges,
+    percentageChanges,
     warnings: [...new Set(warnings)],
   };
 }

@@ -7,6 +7,8 @@ export type AssetRow = {
   datatype: AssetDatatype;
   currency: string;
   account: string;
+  displayName: string | null;
+  fullName: string | null;
   reportingValues: Map<string, number>;
 };
 
@@ -29,7 +31,7 @@ function normalizeCurrency(value: unknown) {
 
 export async function loadNetWorthWorkbook(): Promise<NetWorthWorkbook> {
   const { sheetId, sheets } = getSheetsClient();
-  const [assetsResponse, constantsResponse] = await Promise.all([
+  const [assetsResponse, constantsResponse, metadataResponse] = await Promise.all([
     sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: "assets!A:Z",
@@ -40,14 +42,38 @@ export async function loadNetWorthWorkbook(): Promise<NetWorthWorkbook> {
       range: "costants!A:B",
       valueRenderOption: "UNFORMATTED_VALUE",
     }),
+    sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: "metadata!A:F",
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }),
   ]);
   const [headers = [], ...assetRows] = assetsResponse.data.values ?? [];
+  const [metadataHeaders = [], ...metadataRows] = metadataResponse.data.values ?? [];
   const expectedHeaders = ["asset", "datatype", "currency", "account"];
   const actualHeaders = headers.slice(0, 4).map((value) => String(value).trim().toLowerCase());
 
   if (actualHeaders.join("|") !== expectedHeaders.join("|")) {
     throw new Error("The assets tab has invalid headers.");
   }
+
+  const expectedMetadataHeaders = ["ticker", "display_name", "full_name", "currency", "ter", "issuer"];
+  const actualMetadataHeaders = metadataHeaders.map((value) => String(value).trim().toLowerCase());
+  if (actualMetadataHeaders.join("|") !== expectedMetadataHeaders.join("|")) {
+    throw new Error("The metadata tab has invalid headers.");
+  }
+
+  const metadata = new Map(
+    metadataRows
+      .filter((row) => row.some((value) => String(value ?? "").trim() !== ""))
+      .map(([ticker, displayName, fullName]) => [
+        String(ticker ?? "").trim(),
+        {
+          displayName: String(displayName ?? "").trim() || null,
+          fullName: String(fullName ?? "").trim() || null,
+        },
+      ]),
+  );
 
   const reportingPeriods = headers.slice(4).map(toIsoDate);
   const assets = assetRows
@@ -73,7 +99,17 @@ export async function loadNetWorthWorkbook(): Promise<NetWorthWorkbook> {
         throw new Error(`The assets tab contains an invalid row for ${asset || "an unnamed asset"}.`);
       }
 
-      return { asset, datatype: datatype as AssetDatatype, currency, account, reportingValues };
+      const instrument = metadata.get(asset);
+
+      return {
+        asset,
+        datatype: datatype as AssetDatatype,
+        currency,
+        account,
+        displayName: instrument?.displayName ?? null,
+        fullName: instrument?.fullName ?? null,
+        reportingValues,
+      };
     });
   const constants = new Map(
     (constantsResponse.data.values ?? []).map(([key, value]) => [String(key).trim().toUpperCase(), normalizeCurrency(value)]),
