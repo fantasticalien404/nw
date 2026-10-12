@@ -13,6 +13,8 @@ invesmwent management:
 
 - in nw: aadd target with effective asset allocation
 
+- in nw: add performance ytd of each etf in the selected currency (percentage)
+
 - in nw: leverage over time (considering both stacked etf and expliciti leverage in ib)
 
 - understand how to implement the multi year view
