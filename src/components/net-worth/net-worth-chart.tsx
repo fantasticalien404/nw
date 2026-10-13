@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { NetWorthReport } from "@/lib/analytics/net-worth";
 
 type NetWorthChartProps = {
   report: NetWorthReport;
+  currencyIndex: number;
+  onCurrencyChange: (index: number) => void;
 };
 
 function formatDate(date: string) {
@@ -34,8 +35,7 @@ function formatPercent(value: number | null) {
   }).format(value);
 }
 
-export function NetWorthChart({ report }: NetWorthChartProps) {
-  const [currencyIndex, setCurrencyIndex] = useState(0);
+export function NetWorthChart({ report, currencyIndex, onCurrencyChange }: NetWorthChartProps) {
   const currency = report.currencies[currencyIndex];
   const values = report.totals[currencyIndex] ?? [];
   const data = report.periods.map((period, index) => ({
@@ -68,7 +68,7 @@ export function NetWorthChart({ report }: NetWorthChartProps) {
           <button
             key={option}
             type="button"
-            onClick={() => setCurrencyIndex(index)}
+            onClick={() => onCurrencyChange(index)}
             aria-pressed={index === currencyIndex}
             className={`border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
               index === currencyIndex

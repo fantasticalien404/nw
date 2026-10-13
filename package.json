@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "npm run test:sheets && next dev",
     "test:sheets": "tsx scripts/test-google-sheets.ts",
+    "test:benchmark": "tsx scripts/test-benchmark.ts",
+    "download:market-data": "tsx scripts/download-market-data.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

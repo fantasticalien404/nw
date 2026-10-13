@@ -1,4 +1,4 @@
-import { getYahooFxRate } from "@/lib/market-data/yahoo";
+import { getFxRate } from "@/lib/market-data/prices";
 import type { CashflowTransaction } from "@/lib/sheets/cashflow";
 
 export type ConvertedCashflowTransaction = Omit<CashflowTransaction, "amount" | "currency"> & {
@@ -19,7 +19,7 @@ export async function convertCashflowTransactions(
       }
 
       const key = `${currency}:${transaction.date}`;
-      const rate = rates.get(key) ?? getYahooFxRate(currency, targetCurrency, transaction.date);
+      const rate = rates.get(key) ?? getFxRate(currency, targetCurrency, transaction.date);
       rates.set(key, rate);
 
       return { ...converted, amount: transaction.amount * await rate };
