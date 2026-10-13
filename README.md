@@ -179,18 +179,20 @@ A reference table for organizing expenses.
 
 #### Structure
 
-| CATEGORY | PARENT_CATEGORY |
-| --- | --- |
+| CATEGORY | PARENT_CATEGORY | IS_ESSENTIAL | IS_RECURRING |
+| --- | --- | --- | --- |
+
+`IS_ESSENTIAL` and `IS_RECURRING` accept `TRUE` or blank. Blank is interpreted as `FALSE`.
 
 #### Examples
 
-| CATEGORY | PARENT_CATEGORY |
-| --- | --- |
-| Grocery | Food |
-| Restaurants | Food |
-| Rent | Housing |
-| Utilities | Housing |
-| Flights | Travel |
+| CATEGORY | PARENT_CATEGORY | IS_ESSENTIAL | IS_RECURRING |
+| --- | --- | --- | --- |
+| Grocery | Food | TRUE | TRUE |
+| Restaurants | Food |  |  |
+| Rent | Housing | TRUE | TRUE |
+| Utilities | Housing | TRUE | TRUE |
+| Flights | Travel |  |  |
 
 #### Purpose
 

@@ -25,7 +25,7 @@ assert.equal(report.totalExpenses, 1_600);
 assert.equal(report.dailyMeanExpenses, 1_600 / 59);
 assert.equal(report.essentialExpenses, 1_300);
 assert.equal(report.recurringExpenses, 1_200);
-assert.equal(report.discretionaryExpenses, 100);
+assert.equal(report.discretionaryExpenses, 300);
 assert.equal(report.salary, 3_000);
 assert.equal(report.yearPeriods[1]?.cumulativeSalary, 3_000);
 assert.equal(report.yearPeriods[1]?.cumulativeExpenses, 1_600);
@@ -34,7 +34,8 @@ assert.equal(buildCashflowReport(transactions, categories, { expenseClassificati
 assert.equal(buildCashflowReport(transactions, categories, { incomeSource: "Salary" }).totalIncome, 3_000);
 const histogram = buildExpenseHistogram(report.expenseTransactions, "quarter");
 assert.equal(histogram[0]?.categories.Rent, 1_000);
-const moving = buildExpenseMovingAverage(report.expenseTransactions, 2);
-assert.equal(moving[1]?.categories.Dining, 50);
+const moving = buildExpenseMovingAverage(report.expenseTransactions, 2, report.rangeStart, report.rangeEnd);
+assert.equal(moving[20]?.categories.Housing, 500);
+assert.equal(moving[20]?.categories.Health, 150);
 
 console.log("cashflow analytics tests passed");

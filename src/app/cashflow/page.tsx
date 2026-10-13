@@ -9,17 +9,19 @@ export const instant = false;
 async function loadReport() {
   try {
     const workbook = await loadCashflowWorkbook();
-    const currency = workbook.reportingCurrencies[0];
-    const transactions = await convertCashflowTransactions(workbook.transactions, currency);
+    const reports = await Promise.all(workbook.reportingCurrencies.map(async (currency) => {
+      const transactions = await convertCashflowTransactions(workbook.transactions, currency);
+      return [currency, buildCashflowReport(transactions, workbook.categories)] as const;
+    }));
     return {
-      currency,
-      report: buildCashflowReport(transactions, workbook.categories),
+      currency: workbook.reportingCurrencies[0],
+      reports: Object.fromEntries(reports),
       error: null,
     };
   } catch (error) {
     return {
       currency: null,
-      report: null,
+      reports: null,
       error: error instanceof Error ? error.message : "The cashflow data could not be loaded.",
     };
   }
@@ -27,9 +29,9 @@ async function loadReport() {
 
 export default async function CashflowPage() {
   await connection();
-  const { currency, report, error } = await loadReport();
+  const { currency, reports, error } = await loadReport();
 
-  if (error || !report || !currency) {
+  if (error || !reports || !currency) {
     return (
       <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-black">Cashflow</h1>
@@ -43,7 +45,7 @@ export default async function CashflowPage() {
       <header className="mb-10 border-b border-zinc-300 pb-6">
         <h1 className="text-3xl font-semibold tracking-tight text-black">Cashflow</h1>
       </header>
-      <CashflowDashboard report={report} currency={currency} />
+      <CashflowDashboard report={reports[currency]} reports={reports} currency={currency} />
     </main>
   );
 }

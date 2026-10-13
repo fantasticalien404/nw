@@ -23,6 +23,11 @@ export type CashflowPeriod = {
   expenses: number | null;
   savings: number | null;
   savingsRate: number | null;
+  salary: number | null;
+  essentialExpenses: number | null;
+  discretionaryExpenses: number | null;
+  recurringExpenses: number | null;
+  nonRecurringExpenses: number | null;
   incomeCategories: Record<string, number | null>;
   expenseCategories: Record<string, number | null>;
   categories: Record<string, number | null>;
@@ -32,6 +37,9 @@ export type ExpenseTransaction = {
   date: string;
   amount: number;
   category: string;
+  parentCategory: string;
+  isEssential: boolean;
+  isRecurring: boolean;
 };
 
 export type CashflowReport = {
@@ -50,6 +58,8 @@ export type CashflowReport = {
   salary: number;
   yearPeriods: Array<CashflowPeriod & { cumulativeSalary: number; cumulativeExpenses: number }>;
   expenseTransactions: ExpenseTransaction[];
+  rangeStart: string | null;
+  rangeEnd: string | null;
 };
 
 export type ExpenseHistogramPeriod = {
@@ -111,14 +121,15 @@ export function buildCashflowReport(
     return {
       periods: [], incomeCategories, expenseCategories, parentCategories, totalIncome: 0, totalExpenses: 0, totalSavings: 0,
       unclassifiedExpenses: 0, dailyMeanExpenses: null, essentialExpenses: 0, recurringExpenses: 0, discretionaryExpenses: 0,
-      salary: 0, yearPeriods: [], expenseTransactions: [],
+      salary: 0, yearPeriods: [], expenseTransactions: [], rangeStart: null, rangeEnd: null,
     };
   }
 
   const rangeStart = filters.from ?? firstDate;
   const rangeEnd = filters.to ?? lastDate;
   const periodMap = new Map(monthsBetween(monthOf(rangeStart), monthOf(rangeEnd)).map((period) => [period, {
-    period, income: 0, chartIncome: 0, expenses: 0, hasTransactions: false,
+    period, income: 0, chartIncome: 0, expenses: 0, salary: 0, essentialExpenses: 0, discretionaryExpenses: 0,
+    recurringExpenses: 0, nonRecurringExpenses: 0, hasTransactions: false,
     incomeCategories: Object.fromEntries(incomeCategories.map((category) => [category, 0])) as Record<string, number>,
     expenseCategories: Object.fromEntries(expenseCategories.map((category) => [category, 0])) as Record<string, number>,
     categories: Object.fromEntries(parentCategories.map((category) => [category, 0])) as Record<string, number>,
@@ -126,7 +137,6 @@ export function buildCashflowReport(
   let unclassifiedExpenses = 0;
   let essentialExpenses = 0;
   let recurringExpenses = 0;
-  let unionEssentialOrRecurring = 0;
   let salary = 0;
   const expenseTransactions: ExpenseTransaction[] = [];
 
@@ -139,6 +149,7 @@ export function buildCashflowReport(
       if (transaction.category) period.incomeCategories[transaction.category] += transaction.amount;
       if (transaction.category?.toLowerCase() === "salary") {
         period.chartIncome += transaction.amount;
+        period.salary += transaction.amount;
         salary += transaction.amount;
       }
       continue;
@@ -148,10 +159,28 @@ export function buildCashflowReport(
     if (transaction.category) period.expenseCategories[transaction.category] += transaction.amount;
     if (definition) period.categories[definition.parentCategory] += transaction.amount;
     else unclassifiedExpenses += transaction.amount;
-    if (definition?.isEssential) essentialExpenses += transaction.amount;
-    if (definition?.isRecurring) recurringExpenses += transaction.amount;
-    if (definition?.isEssential || definition?.isRecurring) unionEssentialOrRecurring += transaction.amount;
-    if (transaction.category) expenseTransactions.push({ date: transaction.date, amount: transaction.amount, category: transaction.category });
+    if (definition?.isEssential) {
+      essentialExpenses += transaction.amount;
+      period.essentialExpenses += transaction.amount;
+    } else {
+      period.discretionaryExpenses += transaction.amount;
+    }
+    if (definition?.isRecurring) {
+      recurringExpenses += transaction.amount;
+      period.recurringExpenses += transaction.amount;
+    } else {
+      period.nonRecurringExpenses += transaction.amount;
+    }
+    if (transaction.category) {
+      expenseTransactions.push({
+        date: transaction.date,
+        amount: transaction.amount,
+        category: transaction.category,
+        parentCategory: definition?.parentCategory ?? "Unclassified",
+        isEssential: definition?.isEssential ?? false,
+        isRecurring: definition?.isRecurring ?? false,
+      });
+    }
   }
 
   const periods = [...periodMap.values()].map((period): CashflowPeriod => period.hasTransactions ? {
@@ -160,6 +189,7 @@ export function buildCashflowReport(
     savingsRate: period.income === 0 ? null : (period.income - period.expenses) / period.income,
   } : {
     period: period.period, income: null, chartIncome: null, expenses: null, savings: null, savingsRate: null,
+    salary: null, essentialExpenses: null, discretionaryExpenses: null, recurringExpenses: null, nonRecurringExpenses: null,
     incomeCategories: Object.fromEntries(incomeCategories.map((category) => [category, null])),
     expenseCategories: Object.fromEntries(expenseCategories.map((category) => [category, null])),
     categories: Object.fromEntries(parentCategories.map((category) => [category, null])),
@@ -178,8 +208,8 @@ export function buildCashflowReport(
     periods, incomeCategories, expenseCategories, parentCategories, totalIncome, totalExpenses,
     totalSavings: totalIncome - totalExpenses, unclassifiedExpenses,
     dailyMeanExpenses: totalExpenses === 0 ? null : totalExpenses / daysBetween(rangeStart, rangeEnd),
-    essentialExpenses, recurringExpenses, discretionaryExpenses: totalExpenses - unionEssentialOrRecurring, salary,
-    yearPeriods, expenseTransactions,
+    essentialExpenses, recurringExpenses, discretionaryExpenses: totalExpenses - essentialExpenses, salary,
+    yearPeriods, expenseTransactions, rangeStart, rangeEnd,
   };
 }
 
@@ -196,18 +226,36 @@ export function buildExpenseHistogram(expenses: ExpenseTransaction[], granularit
   return [...periods.values()];
 }
 
-export function buildExpenseMovingAverage(expenses: ExpenseTransaction[], windowSize: number) {
-  const categories = [...new Set(expenses.map((expense) => expense.category))].sort();
-  const months = monthsBetween(monthOf(expenses.map((expense) => expense.date).sort()[0] ?? ""), monthOf(expenses.map((expense) => expense.date).sort().at(-1) ?? ""));
-  if (!months.length || !months[0].slice(0, 4)) return [];
-  const totals = new Map(months.map((month) => [month, Object.fromEntries(categories.map((category) => [category, 0]))]));
-  for (const expense of expenses) totals.get(monthOf(expense.date))![expense.category] += expense.amount;
-  return months.map((period, index) => ({
-    period,
-    categories: Object.fromEntries(categories.map((category) => {
-      const start = Math.max(0, index - windowSize + 1);
-      const values = months.slice(start, index + 1).map((month) => totals.get(month)![category]);
-      return [category, values.reduce((sum, value) => sum + value, 0) / values.length];
-    })),
-  }));
+export function buildExpenseMovingAverage(
+  expenses: ExpenseTransaction[],
+  windowSize: number,
+  rangeStart?: string | null,
+  rangeEnd?: string | null,
+) {
+  const categories = [...new Set(expenses.map((expense) => expense.parentCategory))].sort();
+  const start = rangeStart ?? expenses.map((expense) => expense.date).sort()[0];
+  const end = rangeEnd ?? expenses.map((expense) => expense.date).sort().at(-1);
+  if (!start || !end || categories.length === 0) return [];
+
+  const dates: string[] = [];
+  for (let date = new Date(`${start}T00:00:00Z`); date <= new Date(`${end}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + 1)) {
+    dates.push(date.toISOString().slice(0, 10));
+  }
+  const totals = new Map(dates.map((date) => [date, Object.fromEntries(categories.map((category) => [category, 0]))]));
+  for (const expense of expenses) {
+    const day = totals.get(expense.date);
+    if (day) day[expense.parentCategory] += expense.amount;
+  }
+
+  return dates.map((date, index) => {
+    const startIndex = Math.max(0, index - windowSize + 1);
+    const days = dates.slice(startIndex, index + 1);
+    return {
+      period: date,
+      categories: Object.fromEntries(categories.map((category) => [
+        category,
+        days.reduce((sum, day) => sum + totals.get(day)![category], 0) / days.length,
+      ])),
+    };
+  });
 }

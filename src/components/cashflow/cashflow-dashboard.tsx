@@ -4,6 +4,8 @@ import { useState } from "react";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -13,10 +15,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { CashflowPeriod, CashflowReport } from "@/lib/analytics/cashflow";
+import { buildExpenseHistogram, buildExpenseMovingAverage, type CashflowPeriod, type CashflowReport } from "@/lib/analytics/cashflow";
 
 type CashflowDashboardProps = {
   report: CashflowReport;
+  reports: Record<string, CashflowReport>;
   currency: string;
 };
 
@@ -34,6 +37,15 @@ function formatMonth(period: string) {
 
 function formatPercent(value: number | null) {
   return value === null ? "—" : new Intl.NumberFormat("en-GB", { style: "percent", maximumFractionDigits: 0 }).format(value);
+}
+
+function Metric({ label, value, currency }: { label: string; value: number | null; currency: string }) {
+  return (
+    <div className="border border-zinc-300 bg-white p-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-black">{formatMoney(value)} {value === null ? "" : currency}</p>
+    </div>
+  );
 }
 
 function axisValue(value: number) {
@@ -84,7 +96,13 @@ function reportingYearMonths(report: CashflowReport, cutoff: string) {
       chartIncome: visible ? source?.chartIncome ?? null : null,
       expenses: visible ? source?.expenses ?? null : null,
       savingsRate: visible ? source?.savingsRate ?? null : null,
+      salary: visible ? source?.salary ?? null : null,
+      essentialExpenses: visible ? source?.essentialExpenses ?? null : null,
+      discretionaryExpenses: visible ? source?.discretionaryExpenses ?? null : null,
+      recurringExpenses: visible ? source?.recurringExpenses ?? null : null,
+      nonRecurringExpenses: visible ? source?.nonRecurringExpenses ?? null : null,
       categories: visible ? source?.categories ?? {} : {},
+      expenseCategories: visible ? source?.expenseCategories ?? {} : {},
       expensesExcludingRent: visible && source ? expensesExcluding(source, ["rent"]) : null,
     };
   });
@@ -127,24 +145,101 @@ function SectionHeading({ title }: { title: string }) {
   return <h2 className="mb-5 text-xl font-medium tracking-tight text-black">{title}</h2>;
 }
 
-export function CashflowDashboard({ report, currency }: CashflowDashboardProps) {
+type InsightLineProps = {
+  title: string;
+  data: Array<Record<string, unknown>>;
+  dataKey?: string;
+  color?: string;
+  percent?: boolean;
+  currency?: string;
+  lines?: Array<{ key: string; name: string; color: string }>;
+};
+
+function InsightLine({ title, data, dataKey, color, percent = false, currency, lines }: InsightLineProps) {
+  const series = lines ?? (dataKey && color ? [{ key: dataKey, name: title, color }] : []);
+  return (
+    <div>
+      <h3 className="mb-2 text-base font-medium text-black">{title}</h3>
+      <div className="h-64 w-full">
+        <ResponsiveContainer>
+          <LineChart data={data} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
+            <CartesianGrid stroke="#d4d4d4" vertical={false} />
+            <XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
+            <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={percent ? (value) => `${Math.round(value * 100)}%` : axisValue} width={percent ? 46 : 54} />
+            <Tooltip formatter={(value) => percent ? formatPercent(typeof value === "number" ? value : null) : `${formatMoney(typeof value === "number" ? value : null)} ${currency ?? ""}`} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
+            {series.length > 1 && <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />}
+            {series.map((line) => <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={line.color} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} />)}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+export function CashflowDashboard({ report, reports, currency }: CashflowDashboardProps) {
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
+  const [insightCurrency, setInsightCurrency] = useState(currency);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => new Set());
+  const [selectedParents, setSelectedParents] = useState<Set<string>>(() => new Set());
+  const [classification, setClassification] = useState("all");
+  const [periodPreset, setPeriodPreset] = useState("ytd");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [hiddenExpenseCategories, setHiddenExpenseCategories] = useState<Set<string>>(() => new Set());
+  const [hiddenMovingAverageCategories, setHiddenMovingAverageCategories] = useState<Set<string>>(() => new Set());
+  const [movingAverageDays, setMovingAverageDays] = useState(30);
   const currentPeriod = report.periods.filter((period) => period.period <= previousMonth()).at(-1);
   const averagePeriods = report.periods.filter((period) => period.period <= previousMonth());
   const cutoff = previousMonth();
   const periodData = reportingYearMonths(report, cutoff);
-  const yearData = periodData.map((period, index) => {
-    if (period.period > cutoff) {
-      return { ...period, cumulativeSalary: null, cumulativeExpenses: null };
-    }
-
-    const periodsThroughCurrent = periodData.slice(0, index + 1);
-    return {
-      ...period,
-      cumulativeSalary: periodsThroughCurrent.reduce((total, entry) => total + (entry.chartIncome ?? 0), 0),
-      cumulativeExpenses: periodsThroughCurrent.reduce((total, entry) => total + (entry.expenses ?? 0), 0),
-    };
+  const insightReport = reports[insightCurrency];
+  const categoryOptions = insightReport.expenseCategories;
+  const parentOptions = insightReport.parentCategories;
+  const reportingEnd = new Date(`${cutoff}T00:00:00Z`);
+  reportingEnd.setUTCDate(0);
+  const reportingEndDate = reportingEnd.toISOString().slice(0, 10);
+  const rangeStart = new Date(reportingEnd);
+  if (periodPreset === "last-7-days") rangeStart.setUTCDate(rangeStart.getUTCDate() - 6);
+  if (periodPreset === "last-1-month") { rangeStart.setUTCDate(1); }
+  if (periodPreset === "last-3-months") { rangeStart.setUTCMonth(rangeStart.getUTCMonth() - 2); rangeStart.setUTCDate(1); }
+  if (periodPreset === "last-6-months") { rangeStart.setUTCMonth(rangeStart.getUTCMonth() - 5); rangeStart.setUTCDate(1); }
+  if (periodPreset === "ytd") { rangeStart.setUTCMonth(0); rangeStart.setUTCDate(1); }
+  const insightRangeStart = periodPreset === "custom" ? customStart : rangeStart.toISOString().slice(0, 10);
+  const insightRangeEnd = periodPreset === "custom" ? customEnd : reportingEndDate;
+  const hasValidRange = Boolean(insightRangeStart && insightRangeEnd && insightRangeStart <= insightRangeEnd);
+  const filteredExpenses = insightReport.expenseTransactions.filter((expense) =>
+    hasValidRange
+    && expense.date >= insightRangeStart
+    && expense.date <= insightRangeEnd
+    && (selectedCategories.size === 0 || selectedCategories.has(expense.category))
+    && (selectedParents.size === 0 || selectedParents.has(expense.parentCategory))
+    && (classification === "all" || (classification === "essential" ? expense.isEssential : classification === "discretionary" ? !expense.isEssential : classification === "recurring" ? expense.isRecurring : !expense.isRecurring)),
+  );
+  const insightPeriodData = reportingYearMonths(insightReport, cutoff).map((period) => {
+    const expenses = filteredExpenses.filter((expense) => `${expense.date.slice(0, 7)}-01` === period.period);
+    const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const essential = expenses.filter((expense) => expense.isEssential).reduce((sum, expense) => sum + expense.amount, 0);
+    const recurring = expenses.filter((expense) => expense.isRecurring).reduce((sum, expense) => sum + expense.amount, 0);
+    return { ...period, expenses: period.period <= cutoff ? total : null, essentialExpenses: period.period <= cutoff ? essential : null, discretionaryExpenses: period.period <= cutoff ? total - essential : null, recurringExpenses: period.period <= cutoff ? recurring : null, nonRecurringExpenses: period.period <= cutoff ? total - recurring : null, savingsRate: period.income === null || period.income === 0 ? null : (period.income - total) / period.income };
   });
+  const histogramByMonth = new Map(buildExpenseHistogram(filteredExpenses, "month").map((period) => [period.period, period.categories]));
+  const movingAverageByMonth = new Map<string, Record<string, number>>();
+  for (const period of buildExpenseMovingAverage(filteredExpenses, movingAverageDays, insightReport.rangeStart, insightReport.rangeEnd)) {
+    if (period.period <= cutoff) movingAverageByMonth.set(`${period.period.slice(0, 7)}-01`, period.categories);
+  }
+  const histogramData = insightPeriodData.map((period) => ({ ...period, categories: histogramByMonth.get(period.period) ?? {} }));
+  const movingAverageData = insightPeriodData.map((period) => ({ ...period, categories: movingAverageByMonth.get(period.period) ?? {} }));
+  const movingAverageCategories = [...new Set(filteredExpenses.map((expense) => expense.parentCategory))].sort();
+  const metricPeriods = insightPeriodData.map((period) => ({ ...period, essentialToSalary: period.salary ? (period.essentialExpenses ?? 0) / period.salary : null, discretionaryToSalary: period.salary ? (period.discretionaryExpenses ?? 0) / period.salary : null }));
+  const cumulativeData = insightPeriodData.reduce<Array<typeof insightPeriodData[number] & { cumulativeSalary: number | null; cumulativeExpenses: number | null }>>((data, period) => {
+    if (period.period > cutoff) return [...data, { ...period, cumulativeSalary: null, cumulativeExpenses: null }];
+    const previous = data.at(-1);
+    return [...data, { ...period, cumulativeSalary: (previous?.cumulativeSalary ?? 0) + (period.chartIncome ?? 0), cumulativeExpenses: (previous?.cumulativeExpenses ?? 0) + (period.expenses ?? 0) }];
+  }, []);
+  const filteredTotalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const daysInSelection = hasValidRange
+    ? Math.floor((Date.parse(`${insightRangeEnd}T00:00:00Z`) - Date.parse(`${insightRangeStart}T00:00:00Z`)) / 86_400_000) + 1
+    : 0;
 
   return (
     <div className="space-y-10">
@@ -309,37 +404,72 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
         </div>
       </section>
 
-      <section className="grid gap-8 lg:grid-cols-2">
-        <div aria-labelledby="savings-rate-heading">
-          <SectionHeading title="Savings rate" />
-          <div className="h-64 w-full">
-            <ResponsiveContainer>
-              <LineChart data={periodData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
-                <CartesianGrid stroke="#d4d4d4" vertical={false} />
-                <XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={(value) => `${Math.round(value * 100)}%`} width={46} />
-                <Tooltip content={<ChartTooltip currency={currency} showSavingsRate />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
-                <Line type="monotone" dataKey="savingsRate" name="Savings rate" stroke="#171717" strokeWidth={2} dot={{ r: 2, fill: "#ffffff", stroke: "#171717" }} isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      <section className="space-y-8 border-t border-zinc-300 pt-8" aria-labelledby="expense-insights-heading">
+        <SectionHeading title="Expense insights" />
+        <div className="grid gap-3 border border-zinc-300 bg-zinc-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="text-xs font-medium text-zinc-700">Display currency<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={insightCurrency} onChange={(event) => setInsightCurrency(event.target.value)}>{Object.keys(reports).map((option) => <option key={option}>{option}</option>)}</select></label>
+          <label className="text-xs font-medium text-zinc-700">Category<select multiple className="mt-1 h-20 w-full border border-zinc-300 bg-white px-2 py-1.5" value={[...selectedCategories]} onChange={(event) => setSelectedCategories(new Set(Array.from(event.currentTarget.selectedOptions, (option) => option.value)))}>{categoryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+          <label className="text-xs font-medium text-zinc-700">Parent category<select multiple className="mt-1 h-20 w-full border border-zinc-300 bg-white px-2 py-1.5" value={[...selectedParents]} onChange={(event) => setSelectedParents(new Set(Array.from(event.currentTarget.selectedOptions, (option) => option.value)))}>{parentOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+          <label className="text-xs font-medium text-zinc-700">Expense classification<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={classification} onChange={(event) => setClassification(event.target.value)}><option value="all">All expenses</option><option value="essential">Essential</option><option value="discretionary">Discretionary</option><option value="recurring">Recurring</option><option value="non-recurring">Non-recurring</option></select></label>
+          <label className="text-xs font-medium text-zinc-700">Period<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}><option value="last-7-days">Last 7 days</option><option value="last-1-month">Last month</option><option value="last-3-months">Last 3 months</option><option value="last-6-months">Last 6 months</option><option value="ytd">Year to date</option><option value="custom">Custom range</option></select></label>
+          {periodPreset === "custom" && <><label className="text-xs font-medium text-zinc-700">From<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" type="date" max={reportingEndDate} value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></label><label className="text-xs font-medium text-zinc-700">To<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" type="date" max={reportingEndDate} value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></label></>}
         </div>
-        <div aria-labelledby="cumulative-cashflow-heading">
-          <SectionHeading title="Cumulative cashflow" />
-          <div className="h-64 w-full">
+        <p className="text-xs text-zinc-600">These filters apply only to Expense insights. Use Command/Ctrl-click to select multiple categories.</p>
+        <div className="overflow-x-auto border border-zinc-300 bg-white">
+          <table className="w-full min-w-150 text-sm">
+            <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-2">Summary</th><th className="px-3 py-2 text-right">Value</th></tr></thead>
+            <tbody>
+              <tr><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">Total expenses</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(filteredTotalExpenses)} {insightCurrency}</td></tr>
+              <tr><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">Daily mean expenses</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(daysInSelection === 0 ? null : filteredTotalExpenses / daysInSelection)} {insightCurrency}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric label="Salary" value={insightPeriodData.reduce((sum, period) => sum + (period.salary ?? 0), 0)} currency={insightCurrency} />
+          <Metric label="Essential expenses" value={filteredExpenses.filter((expense) => expense.isEssential).reduce((sum, expense) => sum + expense.amount, 0)} currency={insightCurrency} />
+          <Metric label="Discretionary expenses" value={filteredExpenses.filter((expense) => !expense.isEssential).reduce((sum, expense) => sum + expense.amount, 0)} currency={insightCurrency} />
+          <Metric label="Recurring expenses" value={filteredExpenses.filter((expense) => expense.isRecurring).reduce((sum, expense) => sum + expense.amount, 0)} currency={insightCurrency} />
+        </div>
+
+        <div>
+          <h3 className="mb-2 text-base font-medium text-black">Monthly expenses by category</h3>
+          <p className="mb-4 text-sm text-zinc-600">Click a category in the legend to hide or show it. Report filters are applied before this view.</p>
+          <div className="h-80 w-full">
             <ResponsiveContainer>
-              <LineChart data={yearData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
+              <BarChart data={histogramData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
                 <CartesianGrid stroke="#d4d4d4" vertical={false} />
                 <XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} />
-                <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
-                <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="cumulativeSalary" name="Salary" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} />
-                <Line type="monotone" dataKey="cumulativeExpenses" name="Expenses" stroke="#b91c1c" strokeWidth={2} dot={false} isAnimationActive={false} />
-              </LineChart>
+                <Tooltip content={<ChartTooltip currency={insightCurrency} />} cursor={{ fill: "#f4f4f5" }} />
+                <Legend iconType="square" wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(entry) => { const category = String(entry.value); setHiddenExpenseCategories((categories) => { const next = new Set(categories); if (next.has(category)) next.delete(category); else next.add(category); return next; }); }} />
+                {categoryOptions.map((category, index) => <Bar key={category} dataKey={`categories.${category}`} name={category} stackId="expenses" hide={hiddenExpenseCategories.has(category)} fill={categoryColors[index % categoryColors.length]} isAnimationActive={false} />)}
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
+
+        <div className="grid gap-8 lg:grid-cols-2">
+          <InsightLine title="Essential expenses / salary" data={metricPeriods} dataKey="essentialToSalary" color="#b91c1c" percent />
+          <InsightLine title="Essential and discretionary expenses" data={metricPeriods} lines={[{ key: "essentialExpenses", name: "Essential", color: "#b91c1c" }, { key: "discretionaryExpenses", name: "Discretionary", color: "#c2410c" }]} currency={insightCurrency} />
+          <InsightLine title="Discretionary expenses / salary" data={metricPeriods} dataKey="discretionaryToSalary" color="#c2410c" percent />
+          <InsightLine title="Recurring and non-recurring expenses" data={metricPeriods} lines={[{ key: "recurringExpenses", name: "Recurring", color: "#7c3aed" }, { key: "nonRecurringExpenses", name: "Non-recurring", color: "#0f766e" }]} currency={currency} />
+        </div>
+
+        <div>
+          <SectionHeading title="Savings rate" />
+          <div className="h-64 w-full"><ResponsiveContainer><LineChart data={insightPeriodData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="#d4d4d4" vertical={false} /><XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={(value) => `${Math.round(value * 100)}%`} width={46} /><Tooltip content={<ChartTooltip currency={insightCurrency} showSavingsRate />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} /><Line type="monotone" dataKey="savingsRate" name="Savings rate" stroke="#171717" strokeWidth={2} dot={{ r: 2, fill: "#ffffff", stroke: "#171717" }} isAnimationActive={false} /></LineChart></ResponsiveContainer></div>
+        </div>
+
+        <div>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-base font-medium text-black">Moving average expenses by parent category</h3><p className="mt-1 text-sm text-zinc-600">Daily expense average over the selected trailing window.</p></div><label className="text-sm font-medium text-zinc-700">Window (days)<input className="ml-2 w-20 border border-zinc-300 px-2 py-1 text-right" type="number" min="1" value={movingAverageDays} onChange={(event) => setMovingAverageDays(Math.max(1, Number(event.target.value) || 1))} /></label></div>
+          <div className="h-80 w-full"><ResponsiveContainer><LineChart data={movingAverageData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="#d4d4d4" vertical={false} /><XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} /><Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} /><Legend iconType="line" wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(entry) => { const category = String(entry.value); setHiddenMovingAverageCategories((categories) => { const next = new Set(categories); if (next.has(category)) next.delete(category); else next.add(category); return next; }); }} />{movingAverageCategories.map((category, index) => <Line key={category} type="monotone" dataKey={`categories.${category}`} name={category} hide={hiddenMovingAverageCategories.has(category)} stroke={categoryColors[index % categoryColors.length]} strokeWidth={2} dot={false} isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div>
+        </div>
+
+        <div className="overflow-x-auto border border-zinc-300 bg-white">
+          <table className="w-full min-w-150 text-sm"><thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-2">Trailing expenses by parent category</th><th className="px-3 py-2 text-right">Daily average</th></tr></thead><tbody>{movingAverageCategories.map((category) => <tr key={category}><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">{category}</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(movingAverageData.filter((period) => period.period <= cutoff).at(-1)?.categories[category] ?? null)} {insightCurrency}</td></tr>)}</tbody></table>
+        </div>
+
+        <div aria-labelledby="cumulative-cashflow-heading"><SectionHeading title="Cumulative cashflow" /><div className="h-72 w-full"><ResponsiveContainer><LineChart data={cumulativeData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="#d4d4d4" vertical={false} /><XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} /><Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} /><Legend iconType="line" wrapperStyle={{ fontSize: 12 }} /><Line type="monotone" dataKey="cumulativeSalary" name="Salary" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} /><Line type="monotone" dataKey="cumulativeExpenses" name="Expenses" stroke="#b91c1c" strokeWidth={2} dot={false} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></div>
       </section>
     </div>
   );
