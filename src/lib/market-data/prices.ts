@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { downloadYahooPrices } from "./yahoo";
 
 export type MarketPrice = {
   date: string;
@@ -15,6 +16,16 @@ type PriceFile = {
 
 function priceFilePath(symbol: string) {
   return join(process.cwd(), "data", "market-data", `${encodeURIComponent(symbol)}.json`);
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function nextDay(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
 }
 
 async function loadPrices(symbol: string): Promise<MarketPrice[]> {
@@ -43,12 +54,30 @@ function pricesInRange(prices: MarketPrice[], start: string, end: string) {
   return prices.filter((price) => price.date >= start && price.date < end);
 }
 
+function mergePrices(localPrices: MarketPrice[], downloadedPrices: MarketPrice[]) {
+  const pricesByDate = new Map(localPrices.map((price) => [price.date, price]));
+  for (const price of downloadedPrices) pricesByDate.set(price.date, price);
+  return [...pricesByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
+async function pricesThrough(symbol: string, end: string) {
+  const localPrices = await loadPrices(symbol);
+  const latestLocalDate = localPrices.at(-1)?.date;
+  if (!latestLocalDate || end <= nextDay(latestLocalDate)) return localPrices;
+
+  try {
+    return mergePrices(localPrices, await downloadYahooPrices(symbol, nextDay(latestLocalDate), end));
+  } catch {
+    return localPrices;
+  }
+}
+
 export async function getPriceHistory(symbol: string, start: string, end: string) {
-  return pricesInRange(await loadPrices(symbol), start, end).map(({ date, close }) => ({ date, close }));
+  return pricesInRange(await pricesThrough(symbol, end), start, end).map(({ date, close }) => ({ date, close }));
 }
 
 export async function getAdjustedPriceHistory(symbol: string, start: string, end: string) {
-  const prices = pricesInRange(await loadPrices(symbol), start, end).flatMap(({ date, adjustedClose }) => (
+  const prices = pricesInRange(await pricesThrough(symbol, end), start, end).flatMap(({ date, adjustedClose }) => (
     adjustedClose === null ? [] : [{ date, close: adjustedClose }]
   ));
   if (prices.length === 0) {
@@ -58,7 +87,8 @@ export async function getAdjustedPriceHistory(symbol: string, start: string, end
 }
 
 export async function getPrice(symbol: string, date: string) {
-  const price = (await loadPrices(symbol)).find((entry) => entry.date >= date)?.close;
+  const prices = await pricesThrough(symbol, nextDay(today()));
+  const price = prices.find((entry) => entry.date >= date)?.close ?? prices.at(-1)?.close;
   if (price === undefined) {
     throw new Error(`Local market data has no price for ${symbol} on or after ${date}.`);
   }
@@ -66,7 +96,7 @@ export async function getPrice(symbol: string, date: string) {
 }
 
 export async function getLatestPrice(symbol: string) {
-  const price = (await loadPrices(symbol)).at(-1)?.close;
+  const price = (await pricesThrough(symbol, nextDay(today()))).at(-1)?.close;
   if (price === undefined) {
     throw new Error(`Local market data has no latest price for ${symbol}.`);
   }

@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "npm run test:sheets && next dev",
     "test:sheets": "tsx scripts/test-google-sheets.ts",
+    "test:cashflow": "tsx scripts/test-cashflow-analytics.ts",
     "test:benchmark": "tsx scripts/test-benchmark.ts",
+    "test:market-data": "tsx scripts/test-market-data.ts",
     "download:market-data": "tsx scripts/download-market-data.ts",
     "build": "next build",
     "start": "next start",

@@ -10,10 +10,17 @@ export type CashflowTransaction = {
   category: string | null;
 };
 
+export type CashflowCategory = {
+  category: string;
+  parentCategory: string;
+  isEssential: boolean;
+  isRecurring: boolean;
+};
+
 export type CashflowWorkbook = {
   transactions: CashflowTransaction[];
-  categoryParents: Map<string, string>;
-  primaryCurrency: string;
+  categories: CashflowCategory[];
+  reportingCurrencies: string[];
 };
 
 function toIsoDate(value: unknown) {
@@ -40,7 +47,7 @@ export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
     }),
     sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
-      range: "categories!A:B",
+      range: "categories!A:D",
       valueRenderOption: "UNFORMATTED_VALUE",
     }),
     sheets.spreadsheets.values.get({
@@ -56,7 +63,7 @@ export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
     const header = String(value).trim().toLowerCase();
     return index === 6 && header === "city" ? "subcategory" : header;
   });
-  const expectedCategoryHeaders = ["category", "parent_category"];
+  const expectedCategoryHeaders = ["category", "parent_category", "is_essential", "is_recurring"];
   const actualCategoryHeaders = categoryHeaders.map((value) => String(value).trim().toLowerCase());
 
   if (actualCashflowHeaders.join("|") !== expectedCashflowHeaders.join("|")) {
@@ -66,17 +73,28 @@ export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
     throw new Error("The categories tab has invalid headers.");
   }
 
-  const categoryParents = new Map<string, string>();
-  for (const [category, parentCategory] of categoryRows) {
+  const categories: CashflowCategory[] = [];
+  const categoryByName = new Map<string, CashflowCategory>();
+  for (const [category, parentCategory, isEssential, isRecurring] of categoryRows) {
     const key = String(category ?? "").trim();
-    const value = String(parentCategory ?? "").trim();
-    if (!key || !value) {
+    const parent = String(parentCategory ?? "").trim();
+    if (!key || !parent) {
       throw new Error("The categories tab contains an incomplete category.");
     }
-    if (categoryParents.has(key)) {
+    if (categoryByName.has(key)) {
       throw new Error(`The categories tab contains a duplicate category: ${key}.`);
     }
-    categoryParents.set(key, value);
+    if (!["", undefined, true].includes(isEssential) || !["", undefined, true].includes(isRecurring)) {
+      throw new Error("The categories tab requires boolean TRUE or blank classification values.");
+    }
+    const definition = {
+      category: key,
+      parentCategory: parent,
+      isEssential: isEssential === true,
+      isRecurring: isRecurring === true,
+    };
+    categoryByName.set(key, definition);
+    categories.push(definition);
   }
 
   const transactions = cashflowRows.map((row, index) => {
@@ -92,7 +110,7 @@ export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
     if (!Number.isFinite(amount) || amount < 0 || !/^[A-Z]{3}$/.test(currency)) {
       throw new Error(`The cashflow tab contains an invalid transaction on row ${index + 2}.`);
     }
-    if (category && !categoryParents.has(category)) {
+    if (category && !categoryByName.has(category)) {
       throw new Error(`The cashflow tab contains an unknown category on row ${index + 2}: ${category}.`);
     }
 
@@ -102,10 +120,13 @@ export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
   const constants = new Map(
     (constantsResponse.data.values ?? []).map(([key, value]) => [String(key).trim().toUpperCase(), normalizeCurrency(value)]),
   );
-  const primaryCurrency = constants.get("CURRENCY_1");
-  if (!primaryCurrency || !/^[A-Z]{3}$/.test(primaryCurrency)) {
+  const reportingCurrencies = ["CURRENCY_1", "CURRENCY_2", "CURRENCY_3"].flatMap((key) => {
+    const currency = constants.get(key);
+    return currency && /^[A-Z]{3}$/.test(currency) ? [currency] : [];
+  }).filter((currency, index, values) => values.indexOf(currency) === index);
+  if (reportingCurrencies.length === 0) {
     throw new Error("Set CURRENCY_1 in the costants tab.");
   }
 
-  return { transactions, categoryParents, primaryCurrency };
+  return { transactions, categories, reportingCurrencies };
 }

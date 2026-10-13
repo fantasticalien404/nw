@@ -9,10 +9,11 @@ export const instant = false;
 async function loadReport() {
   try {
     const workbook = await loadCashflowWorkbook();
-    const transactions = await convertCashflowTransactions(workbook.transactions, workbook.primaryCurrency);
+    const currency = workbook.reportingCurrencies[0];
+    const transactions = await convertCashflowTransactions(workbook.transactions, currency);
     return {
-      currency: workbook.primaryCurrency,
-      report: buildCashflowReport(transactions, workbook.categoryParents),
+      currency,
+      report: buildCashflowReport(transactions, workbook.categories),
       error: null,
     };
   } catch (error) {
@@ -40,8 +41,7 @@ export default async function CashflowPage() {
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6">
       <header className="mb-10 border-b border-zinc-300 pb-6">
-        <p className="mb-2 text-sm text-zinc-600">Cashflow dashboard</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-black">Income, expenses, and savings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-black">Cashflow</h1>
       </header>
       <CashflowDashboard report={report} currency={currency} />
     </main>

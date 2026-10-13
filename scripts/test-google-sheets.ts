@@ -187,7 +187,7 @@ async function main() {
   console.log("Assets schema and values are valid.");
 
   const [constantsResponse, saaResponse, categoriesResponse, metadataResponse] = await Promise.all(
-    ["costants!A:B", "saa!A:Z", "categories!A:B", "metadata!A:F"].map((range) =>
+    ["costants!A:B", "saa!A:Z", "categories!A:D", "metadata!A:F"].map((range) =>
       sheets.spreadsheets.values.get({
         spreadsheetId: process.env.GOOGLE_SHEET_ID,
         range,
@@ -256,7 +256,7 @@ async function main() {
     otherErrors.push("The categories tab must contain a header row and at least one category row.");
   } else {
     const [categoryHeaders, ...categories] = categoryRows;
-    const expectedCategoryHeaders = ["category", "parent_category"];
+    const expectedCategoryHeaders = ["category", "parent_category", "is_essential", "is_recurring"];
     const actualCategoryHeaders = categoryHeaders.map((header) => String(header).trim().toLowerCase());
 
     if (actualCategoryHeaders.join("|") !== expectedCategoryHeaders.join("|")) {
@@ -267,8 +267,11 @@ async function main() {
     for (const [index, category] of categories.entries()) {
       const key = String(category[0] ?? "").trim();
       const parent = String(category[1] ?? "").trim();
+      const flags = category.slice(2, 4);
       if (!key || !parent) {
         otherErrors.push(`categories row ${index + 2}: category and parent category are required.`);
+      } else if (flags.some((flag) => flag !== "" && flag !== undefined && flag !== true)) {
+        otherErrors.push(`categories row ${index + 2}: essential and recurring must be boolean TRUE or blank.`);
       } else if (categoryKeys.has(key)) {
         otherErrors.push(`categories row ${index + 2}: duplicate category "${key}".`);
       } else {

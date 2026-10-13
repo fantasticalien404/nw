@@ -5,11 +5,23 @@ import type { NetWorthReport } from "@/lib/analytics/net-worth";
 import { NetWorthChart } from "./net-worth-chart";
 import { NetWorthTable } from "./net-worth-table";
 
+function formatMoney(value: number | null) {
+  return value === null ? "—" : new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(value);
+}
+
 export function NetWorthPortfolio({ report }: { report: NetWorthReport }) {
   const [currencyIndex, setCurrencyIndex] = useState(0);
+  const currency = report.currencies[currencyIndex] ?? report.currencies[0];
+  const currentNetWorth = report.totals[currencyIndex]?.at(-1) ?? null;
 
   return (
     <>
+      <header className="mb-10 border-b border-zinc-300 pb-6">
+        <h1 className="text-3xl font-semibold tracking-tight text-black">
+          {formatMoney(currentNetWorth)} {currency}
+        </h1>
+      </header>
+
       <NetWorthChart report={report} currencyIndex={currencyIndex} onCurrencyChange={setCurrencyIndex} />
       {report.warnings.length > 0 && (
         <section className="mb-6 border border-zinc-300 bg-zinc-50 p-4" aria-labelledby="data-quality-heading">

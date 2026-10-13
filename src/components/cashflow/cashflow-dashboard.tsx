@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -49,11 +50,44 @@ function averageRate(values: Array<number | null>) {
   return available.length === 0 ? null : available.reduce((total, value) => total + value, 0) / available.length;
 }
 
+function expensesExcluding(period: CashflowPeriod, excludedCategories: string[]) {
+  if (period.expenses === null) return null;
+
+  const excluded = new Set(excludedCategories.map((category) => category.toLowerCase()));
+  const excludedExpenses = Object.entries(period.expenseCategories).reduce(
+    (total, [category, amount]) => total + (excluded.has(category.toLowerCase()) ? (amount ?? 0) : 0),
+    0,
+  );
+  return period.expenses - excludedExpenses;
+}
+
 function previousMonth() {
   const date = new Date();
   date.setUTCDate(1);
   date.setUTCMonth(date.getUTCMonth() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+function reportingYearMonths(report: CashflowReport, cutoff: string) {
+  const year = cutoff.slice(0, 4);
+  const periods = new Map(report.periods.map((period) => [period.period, period]));
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const period = `${year}-${String(index + 1).padStart(2, "0")}-01`;
+    const source = periods.get(period);
+    const visible = period <= cutoff;
+
+    return {
+      period,
+      label: formatMonth(period),
+      income: visible ? source?.income ?? null : null,
+      chartIncome: visible ? source?.chartIncome ?? null : null,
+      expenses: visible ? source?.expenses ?? null : null,
+      savingsRate: visible ? source?.savingsRate ?? null : null,
+      categories: visible ? source?.categories ?? {} : {},
+      expensesExcludingRent: visible && source ? expensesExcluding(source, ["rent"]) : null,
+    };
+  });
 }
 
 function ChartTooltip({
@@ -94,10 +128,23 @@ function SectionHeading({ title }: { title: string }) {
 }
 
 export function CashflowDashboard({ report, currency }: CashflowDashboardProps) {
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
   const currentPeriod = report.periods.filter((period) => period.period <= previousMonth()).at(-1);
   const averagePeriods = report.periods.filter((period) => period.period <= previousMonth());
-  const periodData = report.periods.map((period) => ({ ...period, label: formatMonth(period.period) }));
-  const yearData = report.yearPeriods.map((period) => ({ ...period, label: formatMonth(period.period) }));
+  const cutoff = previousMonth();
+  const periodData = reportingYearMonths(report, cutoff);
+  const yearData = periodData.map((period, index) => {
+    if (period.period > cutoff) {
+      return { ...period, cumulativeSalary: null, cumulativeExpenses: null };
+    }
+
+    const periodsThroughCurrent = periodData.slice(0, index + 1);
+    return {
+      ...period,
+      cumulativeSalary: periodsThroughCurrent.reduce((total, entry) => total + (entry.chartIncome ?? 0), 0),
+      cumulativeExpenses: periodsThroughCurrent.reduce((total, entry) => total + (entry.expenses ?? 0), 0),
+    };
+  });
 
   return (
     <div className="space-y-10">
@@ -120,13 +167,15 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
               <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} />
               <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
               <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#b91c1c" strokeWidth={2} dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="income" name="Income" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="expenses" name="EXPENSES" stroke="#b91c1c" strokeWidth={3} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="expensesExcludingRent" name="EXPENSES (NO RENT)" stroke="#b91c1c" strokeOpacity={0.35} strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="chartIncome" name="INCOME" stroke="#15803d" strokeWidth={3} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </section>
 
+      <div className="space-y-4">
       <section aria-label="Income">
         <div className="overflow-x-auto border border-zinc-300 bg-white">
           <table className="w-full min-w-225 table-fixed border-collapse text-xs">
@@ -139,6 +188,14 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
               </tr>
             </thead>
             <tbody>
+              {report.incomeCategories.map((category) => (
+                <tr key={category}>
+                  <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black">{category}</th>
+                  {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.incomeCategories[category])}</td>)}
+                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (period.incomeCategories[category] ?? 0), 0))}</td>
+                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.incomeCategories[category])))}</td>
+                </tr>
+              ))}
               <tr className="bg-zinc-50 font-semibold">
                 <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Total income</th>
                 {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.income)}</td>)}
@@ -170,6 +227,18 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
                   <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.categories[category])))}</td>
                 </tr>
               ))}
+              <tr className="font-semibold">
+                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expense excluding rent</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent"]))}</td>)}
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent"]) ?? 0), 0))}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent"]))))}</td>
+              </tr>
+              <tr className="font-semibold">
+                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expense excluding rent and health insurance</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent", "health insurance"]))}</td>)}
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent", "health insurance"]) ?? 0), 0))}</td>
+                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent", "health insurance"]))))}</td>
+              </tr>
               <tr className="bg-zinc-50 font-semibold">
                 <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expenses</th>
                 {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.expenses)}</td>)}
@@ -210,6 +279,7 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
           </table>
         </div>
       </section>
+      </div>
 
       <section className="border-b border-zinc-300 pb-8" aria-labelledby="expense-composition-heading">
         <SectionHeading title="Expense composition" />
@@ -220,8 +290,20 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
               <XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} />
               <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
-              <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
-              {report.parentCategories.map((category, index) => <Area key={category} type="monotone" dataKey={`categories.${category}`} name={category} stackId="expenses" stroke={categoryColors[index % categoryColors.length]} fill={categoryColors[index % categoryColors.length]} fillOpacity={0.72} isAnimationActive={false} />)}
+              <Legend
+                iconType="square"
+                wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
+                onClick={(entry) => {
+                  const category = String(entry.value);
+                  setHiddenCategories((categories) => {
+                    const nextCategories = new Set(categories);
+                    if (nextCategories.has(category)) nextCategories.delete(category);
+                    else nextCategories.add(category);
+                    return nextCategories;
+                  });
+                }}
+              />
+              {report.parentCategories.map((category, index) => <Area key={category} type="monotone" dataKey={`categories.${category}`} name={category} stackId="expenses" hide={hiddenCategories.has(category)} stroke={categoryColors[index % categoryColors.length]} fill={categoryColors[index % categoryColors.length]} fillOpacity={0.72} isAnimationActive={false} />)}
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -252,7 +334,7 @@ export function CashflowDashboard({ report, currency }: CashflowDashboardProps) 
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} />
                 <Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} />
                 <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="cumulativeIncome" name="Income" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="cumulativeSalary" name="Salary" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} />
                 <Line type="monotone" dataKey="cumulativeExpenses" name="Expenses" stroke="#b91c1c" strokeWidth={2} dot={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>

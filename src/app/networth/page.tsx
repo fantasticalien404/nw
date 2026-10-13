@@ -23,16 +23,6 @@ function addDays(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
-function formatMoney(value: number | null) {
-  if (value === null) {
-    return "—";
-  }
-
-  return new Intl.NumberFormat("en-GB", {
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 async function loadReport() {
   try {
     const report = await buildNetWorthReport(await loadNetWorthWorkbook());
@@ -87,17 +77,8 @@ export default async function NetWorthPage() {
     );
   }
 
-  const currentNetWorth = report.totals[0]?.at(-1) ?? null;
-
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6">
-      <header className="mb-10 border-b border-zinc-300 pb-6">
-        <p className="mb-2 text-sm text-zinc-600">Current net worth</p>
-        <h1 className="text-3xl font-semibold tracking-tight text-black">
-          {formatMoney(currentNetWorth)} {report.currencies[0]}
-        </h1>
-      </header>
-
       <NetWorthPortfolio report={report} />
 
       {benchmarkInputs && <BenchmarkComparison inputs={benchmarkInputs} />}
