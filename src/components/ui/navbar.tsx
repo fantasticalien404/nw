@@ -17,7 +17,7 @@ export function Navbar() {
 
   return (
     <nav className="border-b border-zinc-300" aria-label="Main navigation">
-      <div className="mx-auto flex w-full max-w-[1400px] gap-1 overflow-x-auto px-4 py-3 text-sm sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1400px] gap-1 overflow-x-auto px-4 py-2 text-sm sm:px-6">
         {links.map((link) => (
           <Link
             key={link.href}

@@ -33,16 +33,16 @@ export default async function CashflowPage() {
 
   if (error || !reports || !currency) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
+      <main className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-black">Cashflow</h1>
-        <p className="mt-4 border border-zinc-300 bg-zinc-50 p-4 text-zinc-800">{error}</p>
+        <p className="mt-3 border border-zinc-300 bg-zinc-50 px-4 py-3 text-zinc-800">{error}</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6">
-      <header className="mb-10 border-b border-zinc-300 pb-6">
+    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
+      <header className="mb-8 border-b border-zinc-300 pb-4">
         <h1 className="text-3xl font-semibold tracking-tight text-black">Cashflow</h1>
       </header>
       <CashflowDashboard report={reports[currency]} reports={reports} currency={currency} />

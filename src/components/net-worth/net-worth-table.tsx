@@ -46,22 +46,22 @@ function AssetGroup({ label, rows, periods, currency }: { label: string; rows: N
   return (
     <tbody>
       <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-        <th colSpan={periods.length + 4} className="border border-zinc-300 px-2 py-1.5">
+        <th colSpan={periods.length + 4} className="border border-zinc-300 px-2 py-1">
           {label}
         </th>
       </tr>
       {rows.map((row) => (
         <tr key={`${row.datatype}-${row.asset}-${row.currency}`}>
-          <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black">
+          <th scope="row" className="border border-zinc-300 px-2 py-1 text-left font-medium text-black">
             <AssetName row={row} />
           </th>
-          <td className="border border-zinc-300 px-2 py-1.5 text-zinc-700">{row.asset}</td>
-          <td className="border border-zinc-300 px-2 py-1.5 text-zinc-700">{row.currency}</td>
-          <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums text-black">
+          <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.asset}</td>
+          <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.currency}</td>
+          <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
             {formatPercentage(row.ytdPerformance[currency] ?? null)}
           </td>
           {row.values.map((value, index) => (
-            <td key={periods[index]} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums text-black">
+            <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
               {formatMoney(value)}
             </td>
           ))}
@@ -80,14 +80,14 @@ function TotalRow({ label, currency, values, periods, percentage = false }: {
 }) {
   return (
     <tr className="bg-zinc-50 font-semibold">
-      <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">
+      <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">
         {label}
       </th>
-      <td className="border border-zinc-300 px-2 py-1.5" />
-      <td className="border border-zinc-300 px-2 py-1.5 text-zinc-700">{currency}</td>
-      <td className="border border-zinc-300 px-2 py-1.5" />
+      <td className="border border-zinc-300 px-2 py-1" />
+      <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{currency}</td>
+      <td className="border border-zinc-300 px-2 py-1" />
       {values.map((value, periodIndex) => (
-        <td key={periods[periodIndex]} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+        <td key={periods[periodIndex]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
           {percentage ? formatPercentage(value) : formatMoney(value)}
         </td>
       ))}
@@ -103,7 +103,7 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
 
   return (
     <div className="w-full border border-zinc-300 bg-white">
-      <div className="border-b border-zinc-300 px-3 py-2">
+      <div className="border-b border-zinc-300 px-3 py-1.5">
         <h2 className="font-medium text-black">Portfolio</h2>
       </div>
       <table className="w-full table-fixed border-collapse text-xs">
@@ -116,12 +116,12 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
         </colgroup>
         <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
           <tr>
-            <th className="border border-zinc-300 px-2 py-1.5">Asset</th>
-            <th className="border border-zinc-300 px-2 py-1.5">Ticker</th>
-            <th className="border border-zinc-300 px-2 py-1.5">Currency</th>
-            <th className="border border-zinc-300 px-2 py-1.5 text-right">YTD %</th>
+            <th className="border border-zinc-300 px-2 py-1">Asset</th>
+            <th className="border border-zinc-300 px-2 py-1">Ticker</th>
+            <th className="border border-zinc-300 px-2 py-1">Currency</th>
+            <th className="border border-zinc-300 px-2 py-1 text-right">YTD %</th>
             {report.periods.map((period, index) => (
-              <th key={period} className="border border-zinc-300 px-2 py-1.5 text-right">
+              <th key={period} className="border border-zinc-300 px-2 py-1 text-right">
                 {index === report.periods.length - 1 ? "Current" : formatDate(period)}
               </th>
             ))}
@@ -132,7 +132,7 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
         <AssetGroup label="Other assets" rows={otherAssets} periods={report.periods} currency={selectedCurrency} />
         <tbody>
           <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-            <th colSpan={report.periods.length + 4} className="border border-zinc-300 px-2 py-1.5">Net Worth</th>
+            <th colSpan={report.periods.length + 4} className="border border-zinc-300 px-2 py-1">Net Worth</th>
           </tr>
           {report.totals.map((total, index) => (
             <TotalRow

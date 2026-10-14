@@ -49,8 +49,8 @@ export function NetWorthChart({ report, currencyIndex, onCurrencyChange }: NetWo
   const change = firstValue && currentValue !== undefined ? currentValue / firstValue - 1 : null;
 
   return (
-    <section className="mb-10 border-b border-zinc-300 pb-8" aria-labelledby="net-worth-trend-heading">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+    <section className="mb-8 border-b border-zinc-300 pb-6" aria-labelledby="net-worth-trend-heading">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 id="net-worth-trend-heading" className="text-xl font-medium tracking-tight text-black">
             Trend
@@ -63,14 +63,14 @@ export function NetWorthChart({ report, currencyIndex, onCurrencyChange }: NetWo
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Display currency">
+      <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Display currency">
         {report.currencies.map((option, index) => (
           <button
             key={option}
             type="button"
             onClick={() => onCurrencyChange(index)}
             aria-pressed={index === currencyIndex}
-            className={`border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
+            className={`border px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
               index === currencyIndex
                 ? "border-black bg-black text-white"
                 : "border-zinc-300 bg-white text-zinc-700 hover:border-black hover:text-black"
@@ -120,7 +120,7 @@ export function NetWorthChart({ report, currencyIndex, onCurrencyChange }: NetWo
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="border border-zinc-300 p-4 text-sm text-zinc-700">No net-worth values are available in {currency}.</p>
+        <p className="border border-zinc-300 px-4 py-3 text-sm text-zinc-700">No net-worth values are available in {currency}.</p>
       )}
     </section>
   );

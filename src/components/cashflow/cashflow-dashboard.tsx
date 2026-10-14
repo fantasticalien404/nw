@@ -41,7 +41,7 @@ function formatPercent(value: number | null) {
 
 function Metric({ label, value, currency }: { label: string; value: number | null; currency: string }) {
   return (
-    <div className="border border-zinc-300 bg-white p-3">
+    <div className="border border-zinc-300 bg-white px-3 py-2">
       <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-black">{formatMoney(value)} {value === null ? "" : currency}</p>
     </div>
@@ -125,7 +125,7 @@ function ChartTooltip({
   const period = payload[0].payload;
 
   return (
-    <div className="border border-zinc-900 bg-white px-3 py-2 text-xs shadow-none">
+    <div className="border border-zinc-900 bg-white px-3 py-1.5 text-xs shadow-none">
       <p className="mb-1 font-medium text-zinc-900">{label ?? "—"}</p>
       {showSavingsRate && period ? (
         <>
@@ -142,7 +142,7 @@ function ChartTooltip({
 }
 
 function SectionHeading({ title }: { title: string }) {
-  return <h2 className="mb-5 text-xl font-medium tracking-tight text-black">{title}</h2>;
+  return <h2 className="mb-4 text-xl font-medium tracking-tight text-black">{title}</h2>;
 }
 
 type InsightLineProps = {
@@ -243,9 +243,9 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
     : 0;
 
   return (
-    <div className="space-y-10">
-      <section className="border-b border-zinc-300 pb-8" aria-labelledby="monthly-cashflow-heading">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-8">
+      <section className="border-b border-zinc-300 pb-6" aria-labelledby="monthly-cashflow-heading">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <SectionHeading title="Monthly cashflow" />
           {currentPeriod && (
             <div className="grid grid-cols-3 gap-5 text-right text-xs tabular-nums">
@@ -277,26 +277,26 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
           <table className="w-full min-w-225 table-fixed border-collapse text-xs">
             <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <tr>
-                <th className="w-[16%] border border-zinc-300 px-2 py-1.5">Income</th>
-                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right">{formatMonth(period.period)}</th>)}
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Total</th>
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Monthly avg</th>
+                <th className="w-[16%] border border-zinc-300 px-2 py-1">Income</th>
+                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1 text-right">{formatMonth(period.period)}</th>)}
+                <th className="border border-zinc-300 px-2 py-1 text-right">Total</th>
+                <th className="border border-zinc-300 px-2 py-1 text-right">Monthly avg</th>
               </tr>
             </thead>
             <tbody>
               {report.incomeCategories.map((category) => (
                 <tr key={category}>
-                  <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black">{category}</th>
-                  {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.incomeCategories[category])}</td>)}
-                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (period.incomeCategories[category] ?? 0), 0))}</td>
-                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.incomeCategories[category])))}</td>
+                  <th scope="row" className="border border-zinc-300 px-2 py-1 text-left font-medium text-black">{category}</th>
+                  {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(period.incomeCategories[category])}</td>)}
+                  <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (period.incomeCategories[category] ?? 0), 0))}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.incomeCategories[category])))}</td>
                 </tr>
               ))}
               <tr className="bg-zinc-50 font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Total income</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.income)}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.totalIncome)}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.income)))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Total income</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(period.income)}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(report.totalIncome)}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.income)))}</td>
               </tr>
             </tbody>
           </table>
@@ -308,43 +308,43 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
           <table className="w-full min-w-225 table-fixed border-collapse text-xs">
             <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <tr>
-                <th className="w-[16%] border border-zinc-300 px-2 py-1.5">Expenses</th>
-                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right">{formatMonth(period.period)}</th>)}
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Total</th>
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Monthly avg</th>
+                <th className="w-[16%] border border-zinc-300 px-2 py-1">Expenses</th>
+                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1 text-right">{formatMonth(period.period)}</th>)}
+                <th className="border border-zinc-300 px-2 py-1 text-right">Total</th>
+                <th className="border border-zinc-300 px-2 py-1 text-right">Monthly avg</th>
               </tr>
             </thead>
             <tbody>
               {report.parentCategories.map((category) => (
                 <tr key={category}>
-                  <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black">{category}</th>
-                  {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.categories[category])}</td>)}
-                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (period.categories[category] ?? 0), 0))}</td>
-                  <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.categories[category])))}</td>
+                  <th scope="row" className="border border-zinc-300 px-2 py-1 text-left font-medium text-black">{category}</th>
+                  {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(period.categories[category])}</td>)}
+                  <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (period.categories[category] ?? 0), 0))}</td>
+                  <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.categories[category])))}</td>
                 </tr>
               ))}
               <tr className="font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expense excluding rent</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent"]))}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent"]) ?? 0), 0))}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent"]))))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Expense excluding rent</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent"]))}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent"]) ?? 0), 0))}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent"]))))}</td>
               </tr>
               <tr className="font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expense excluding rent and health insurance</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent", "health insurance"]))}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent", "health insurance"]) ?? 0), 0))}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent", "health insurance"]))))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Expense excluding rent and health insurance</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(expensesExcluding(period, ["rent", "health insurance"]))}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(report.periods.reduce((total, period) => total + (expensesExcluding(period, ["rent", "health insurance"]) ?? 0), 0))}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => expensesExcluding(period, ["rent", "health insurance"]))))}</td>
               </tr>
               <tr className="bg-zinc-50 font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Expenses</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.expenses)}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.totalExpenses)}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.expenses)))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Expenses</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(period.expenses)}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(report.totalExpenses)}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.expenses)))}</td>
               </tr>
             </tbody>
           </table>
         </div>
-        {report.unclassifiedExpenses > 0 && <p className="mt-3 text-sm text-zinc-600">Unclassified expenses: {formatMoney(report.unclassifiedExpenses)} {currency}</p>}
+        {report.unclassifiedExpenses > 0 && <p className="mt-2 text-sm text-zinc-600">Unclassified expenses: {formatMoney(report.unclassifiedExpenses)} {currency}</p>}
       </section>
 
       <section aria-label="Savings">
@@ -352,24 +352,24 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
           <table className="w-full min-w-225 table-fixed border-collapse text-xs">
             <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <tr>
-                <th className="w-[16%] border border-zinc-300 px-2 py-1.5">Savings</th>
-                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right">{formatMonth(period.period)}</th>)}
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Total</th>
-                <th className="border border-zinc-300 px-2 py-1.5 text-right">Monthly avg</th>
+                <th className="w-[16%] border border-zinc-300 px-2 py-1">Savings</th>
+                {report.periods.map((period) => <th key={period.period} className="border border-zinc-300 px-2 py-1 text-right">{formatMonth(period.period)}</th>)}
+                <th className="border border-zinc-300 px-2 py-1 text-right">Total</th>
+                <th className="border border-zinc-300 px-2 py-1 text-right">Monthly avg</th>
               </tr>
             </thead>
             <tbody>
               <tr className="font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Savings</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(period.savings)}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(report.totalSavings)}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.savings)))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Savings</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(period.savings)}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(report.totalSavings)}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatMoney(monthlyAverage(averagePeriods.map((period) => period.savings)))}</td>
               </tr>
               <tr className="font-semibold">
-                <th scope="row" className="border border-zinc-300 px-2 py-1.5 text-left">Savings rate</th>
-                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatPercent(period.savingsRate)}</td>)}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatPercent(report.totalIncome === 0 ? null : report.totalSavings / report.totalIncome)}</td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">{formatPercent(averageRate(averagePeriods.map((period) => period.savingsRate)))}</td>
+                <th scope="row" className="border border-zinc-300 px-2 py-1 text-left">Savings rate</th>
+                {report.periods.map((period) => <td key={period.period} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatPercent(period.savingsRate)}</td>)}
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatPercent(report.totalIncome === 0 ? null : report.totalSavings / report.totalIncome)}</td>
+                <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">{formatPercent(averageRate(averagePeriods.map((period) => period.savingsRate)))}</td>
               </tr>
             </tbody>
           </table>
@@ -377,7 +377,7 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
       </section>
       </div>
 
-      <section className="border-b border-zinc-300 pb-8" aria-labelledby="expense-composition-heading">
+      <section className="border-b border-zinc-300 pb-6" aria-labelledby="expense-composition-heading">
         <SectionHeading title="Expense composition" />
         <div className="h-80 w-full">
           <ResponsiveContainer>
@@ -405,27 +405,27 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
         </div>
       </section>
 
-      <section className="space-y-8 border-t border-zinc-300 pt-8" aria-labelledby="expense-insights-heading">
+      <section className="space-y-6 border-t border-zinc-300 pt-6" aria-labelledby="expense-insights-heading">
         <SectionHeading title="Expense insights" />
-        <div className="border border-zinc-300 bg-zinc-50 p-4">
+        <div className="border border-zinc-300 bg-zinc-50 px-4 py-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="text-xs font-medium text-zinc-700">Display currency<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={insightCurrency} onChange={(event) => { const nextCurrency = event.target.value; setInsightCurrency(nextCurrency); setSelectedCategories(new Set(reports[nextCurrency].expenseCategories)); setSelectedParents(new Set(reports[nextCurrency].parentCategories)); }}>{Object.keys(reports).map((option) => <option key={option}>{option}</option>)}</select></label>
-            <label className="text-xs font-medium text-zinc-700">Expense classification<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={classification} onChange={(event) => setClassification(event.target.value)}><option value="all">All expenses</option><option value="essential">Essential</option><option value="discretionary">Discretionary</option><option value="recurring">Recurring</option><option value="non-recurring">Non-recurring</option></select></label>
-            <label className="text-xs font-medium text-zinc-700">Period<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}><option value="last-7-days">Last 7 days</option><option value="last-1-month">Last month</option><option value="last-3-months">Last 3 months</option><option value="last-6-months">Last 6 months</option><option value="ytd">Year to date</option><option value="custom">Custom range</option></select></label>
-            {periodPreset === "custom" && <><label className="text-xs font-medium text-zinc-700">From<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" type="date" max={reportingEndDate} value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></label><label className="text-xs font-medium text-zinc-700">To<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5" type="date" max={reportingEndDate} value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></label></>}
+            <label className="text-xs font-medium text-zinc-700">Display currency<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1" value={insightCurrency} onChange={(event) => { const nextCurrency = event.target.value; setInsightCurrency(nextCurrency); setSelectedCategories(new Set(reports[nextCurrency].expenseCategories)); setSelectedParents(new Set(reports[nextCurrency].parentCategories)); }}>{Object.keys(reports).map((option) => <option key={option}>{option}</option>)}</select></label>
+            <label className="text-xs font-medium text-zinc-700">Expense classification<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1" value={classification} onChange={(event) => setClassification(event.target.value)}><option value="all">All expenses</option><option value="essential">Essential</option><option value="discretionary">Discretionary</option><option value="recurring">Recurring</option><option value="non-recurring">Non-recurring</option></select></label>
+            <label className="text-xs font-medium text-zinc-700">Period<select className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}><option value="last-7-days">Last 7 days</option><option value="last-1-month">Last month</option><option value="last-3-months">Last 3 months</option><option value="last-6-months">Last 6 months</option><option value="ytd">Year to date</option><option value="custom">Custom range</option></select></label>
+            {periodPreset === "custom" && <><label className="text-xs font-medium text-zinc-700">From<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1" type="date" max={reportingEndDate} value={customStart} onChange={(event) => setCustomStart(event.target.value)} /></label><label className="text-xs font-medium text-zinc-700">To<input className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1" type="date" max={reportingEndDate} value={customEnd} onChange={(event) => setCustomEnd(event.target.value)} /></label></>}
           </div>
-          <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-300 pt-4">
-            <div className="relative"><button type="button" className="border border-zinc-300 bg-white px-3 py-2 text-sm font-medium" onClick={() => setOpenCategoryMenu((menu) => menu === "parent" ? null : "parent")}>Parent categories{selectedParents.size > 0 ? ` (${selectedParents.size})` : ""}</button>{openCategoryMenu === "parent" && <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg"><div className="mb-3 flex justify-between text-xs underline"><button type="button" onClick={() => setSelectedParents(new Set(parentOptions))}>All</button><button type="button" onClick={() => setSelectedParents(new Set())}>Clear</button></div><div className="grid gap-2 sm:grid-cols-2">{parentOptions.map((parent) => <label key={parent} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedParents.has(parent)} onChange={() => setSelectedParents((parents) => { const next = new Set(parents); if (next.has(parent)) next.delete(parent); else next.add(parent); return next; })} />{parent}</label>)}</div></div>}</div>
-            <div className="relative"><button type="button" className="border border-zinc-300 bg-white px-3 py-2 text-sm font-medium" onClick={() => setOpenCategoryMenu((menu) => menu === "category" ? null : "category")}>Categories{selectedCategories.size > 0 ? ` (${selectedCategories.size})` : ""}</button>{openCategoryMenu === "category" && <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg"><div className="mb-3 flex justify-between text-xs underline"><button type="button" onClick={() => setSelectedCategories(new Set(categoryOptions))}>All</button><button type="button" onClick={() => setSelectedCategories(new Set())}>Clear</button></div><div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">{categoryOptions.map((category) => <label key={category} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedCategories.has(category)} onChange={() => setSelectedCategories((categories) => { const next = new Set(categories); if (next.has(category)) next.delete(category); else next.add(category); return next; })} />{category}</label>)}</div></div>}</div>
+          <div className="mt-3 flex flex-wrap gap-3 border-t border-zinc-300 pt-4">
+            <div className="relative"><button type="button" className="border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium" onClick={() => setOpenCategoryMenu((menu) => menu === "parent" ? null : "parent")}>Parent categories{selectedParents.size > 0 ? ` (${selectedParents.size})` : ""}</button>{openCategoryMenu === "parent" && <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white px-3 py-2 shadow-lg"><div className="mb-2 flex justify-between text-xs underline"><button type="button" onClick={() => setSelectedParents(new Set(parentOptions))}>All</button><button type="button" onClick={() => setSelectedParents(new Set())}>Clear</button></div><div className="grid gap-2 sm:grid-cols-2">{parentOptions.map((parent) => <label key={parent} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedParents.has(parent)} onChange={() => setSelectedParents((parents) => { const next = new Set(parents); if (next.has(parent)) next.delete(parent); else next.add(parent); return next; })} />{parent}</label>)}</div></div>}</div>
+            <div className="relative"><button type="button" className="border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium" onClick={() => setOpenCategoryMenu((menu) => menu === "category" ? null : "category")}>Categories{selectedCategories.size > 0 ? ` (${selectedCategories.size})` : ""}</button>{openCategoryMenu === "category" && <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white px-3 py-2 shadow-lg"><div className="mb-2 flex justify-between text-xs underline"><button type="button" onClick={() => setSelectedCategories(new Set(categoryOptions))}>All</button><button type="button" onClick={() => setSelectedCategories(new Set())}>Clear</button></div><div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">{categoryOptions.map((category) => <label key={category} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selectedCategories.has(category)} onChange={() => setSelectedCategories((categories) => { const next = new Set(categories); if (next.has(category)) next.delete(category); else next.add(category); return next; })} />{category}</label>)}</div></div>}</div>
           </div>
         </div>
         <p className="text-xs text-zinc-600">These filters apply only to Expense insights. Open a category filter and tick the items to include; leaving it clear includes all.</p>
         <div className="overflow-x-auto border border-zinc-300 bg-white">
           <table className="w-full min-w-150 text-sm">
-            <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-2">Summary</th><th className="px-3 py-2 text-right">Value</th></tr></thead>
+            <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-1.5">Summary</th><th className="px-3 py-1.5 text-right">Value</th></tr></thead>
             <tbody>
-              <tr><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">Total expenses</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(filteredTotalExpenses)} {insightCurrency}</td></tr>
-              <tr><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">Daily mean expenses</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(daysInSelection === 0 ? null : filteredTotalExpenses / daysInSelection)} {insightCurrency}</td></tr>
+              <tr><th className="border-t border-zinc-300 px-3 py-1.5 text-left font-medium">Total expenses</th><td className="border-t border-zinc-300 px-3 py-1.5 text-right tabular-nums">{formatMoney(filteredTotalExpenses)} {insightCurrency}</td></tr>
+              <tr><th className="border-t border-zinc-300 px-3 py-1.5 text-left font-medium">Daily mean expenses</th><td className="border-t border-zinc-300 px-3 py-1.5 text-right tabular-nums">{formatMoney(daysInSelection === 0 ? null : filteredTotalExpenses / daysInSelection)} {insightCurrency}</td></tr>
             </tbody>
           </table>
         </div>
@@ -438,7 +438,7 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
 
         <div>
           <h3 className="mb-2 text-base font-medium text-black">Monthly expenses by category</h3>
-          <p className="mb-4 text-sm text-zinc-600">Click a category in the legend to hide or show it. Report filters are applied before this view.</p>
+          <p className="mb-3 text-sm text-zinc-600">Click a category in the legend to hide or show it. Report filters are applied before this view.</p>
           <div className="h-80 w-full">
             <ResponsiveContainer>
               <BarChart data={histogramData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
@@ -466,12 +466,12 @@ export function CashflowDashboard({ report, reports, currency }: CashflowDashboa
         </div>
 
         <div>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-base font-medium text-black">Moving average expenses by parent category</h3><p className="mt-1 text-sm text-zinc-600">Daily expense average over the selected trailing window.</p></div><label className="text-sm font-medium text-zinc-700">Window (days)<input className="ml-2 w-20 border border-zinc-300 px-2 py-1 text-right" type="number" min="1" value={movingAverageDays} onChange={(event) => setMovingAverageDays(Math.max(1, Number(event.target.value) || 1))} /></label></div>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3"><div><h3 className="text-base font-medium text-black">Moving average expenses by parent category</h3><p className="mt-1 text-sm text-zinc-600">Daily expense average over the selected trailing window.</p></div><label className="text-sm font-medium text-zinc-700">Window (days)<input className="ml-2 w-20 border border-zinc-300 px-2 py-1 text-right" type="number" min="1" value={movingAverageDays} onChange={(event) => setMovingAverageDays(Math.max(1, Number(event.target.value) || 1))} /></label></div>
           <div className="h-80 w-full"><ResponsiveContainer><LineChart data={movingAverageData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="#d4d4d4" vertical={false} /><XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} /><Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} /><Legend iconType="line" wrapperStyle={{ fontSize: 12, cursor: "pointer" }} onClick={(entry) => { const category = String(entry.value); setHiddenMovingAverageCategories((categories) => { const next = new Set(categories); if (next.has(category)) next.delete(category); else next.add(category); return next; }); }} />{movingAverageCategories.map((category, index) => <Line key={category} type="monotone" dataKey={`categories.${category}`} name={category} hide={hiddenMovingAverageCategories.has(category)} stroke={categoryColors[index % categoryColors.length]} strokeWidth={2} dot={false} isAnimationActive={false} />)}</LineChart></ResponsiveContainer></div>
         </div>
 
         <div className="overflow-x-auto border border-zinc-300 bg-white">
-          <table className="w-full min-w-150 text-sm"><thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-2">Trailing expenses by parent category</th><th className="px-3 py-2 text-right">Daily average</th></tr></thead><tbody>{movingAverageCategories.map((category) => <tr key={category}><th className="border-t border-zinc-300 px-3 py-2 text-left font-medium">{category}</th><td className="border-t border-zinc-300 px-3 py-2 text-right tabular-nums">{formatMoney(movingAverageData.filter((period) => period.period <= cutoff).at(-1)?.categories[category] ?? null)} {insightCurrency}</td></tr>)}</tbody></table>
+          <table className="w-full min-w-150 text-sm"><thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600"><tr><th className="px-3 py-1.5">Trailing expenses by parent category</th><th className="px-3 py-1.5 text-right">Daily average</th></tr></thead><tbody>{movingAverageCategories.map((category) => <tr key={category}><th className="border-t border-zinc-300 px-3 py-1.5 text-left font-medium">{category}</th><td className="border-t border-zinc-300 px-3 py-1.5 text-right tabular-nums">{formatMoney(movingAverageData.filter((period) => period.period <= cutoff).at(-1)?.categories[category] ?? null)} {insightCurrency}</td></tr>)}</tbody></table>
         </div>
 
         <div aria-labelledby="cumulative-cashflow-heading"><SectionHeading title="Cumulative cashflow" /><div className="h-72 w-full"><ResponsiveContainer><LineChart data={cumulativeData} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}><CartesianGrid stroke="#d4d4d4" vertical={false} /><XAxis dataKey="label" axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" /><YAxis axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} tickFormatter={axisValue} width={54} /><Tooltip content={<ChartTooltip currency={currency} />} cursor={{ stroke: "#171717", strokeDasharray: "3 3" }} /><Legend iconType="line" wrapperStyle={{ fontSize: 12 }} /><Line type="monotone" dataKey="cumulativeSalary" name="Salary" stroke="#15803d" strokeWidth={2} dot={false} isAnimationActive={false} /><Line type="monotone" dataKey="cumulativeExpenses" name="Expenses" stroke="#b91c1c" strokeWidth={2} dot={false} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></div>

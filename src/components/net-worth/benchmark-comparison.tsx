@@ -55,8 +55,8 @@ export function BenchmarkComparison({ inputs }: { inputs: BenchmarkInput[] }) {
     });
 
   return (
-    <section className="mb-10 border-b border-zinc-300 pb-8" aria-labelledby="benchmark-heading">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <section className="mb-8 border-b border-zinc-300 pb-6" aria-labelledby="benchmark-heading">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="benchmark-heading" className="text-xl font-medium tracking-tight text-black">Benchmark comparison</h2>
           <p className="mt-1 text-sm text-zinc-600">Each benchmark starts at your first reported financial-instruments value and receives the same portfolio contributions and withdrawals.</p>
@@ -66,36 +66,36 @@ export function BenchmarkComparison({ inputs }: { inputs: BenchmarkInput[] }) {
           aria-expanded={showMethodology}
           aria-controls="benchmark-methodology"
           onClick={() => setShowMethodology((visible) => !visible)}
-          className="border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-black hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
+          className="border border-zinc-300 px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
         >
           {showMethodology ? "Hide methodology" : "Info"}
         </button>
       </div>
 
       {showMethodology && (
-        <div id="benchmark-methodology" className="mb-6 border border-zinc-300 bg-zinc-50 p-4 text-sm leading-6 text-zinc-700">
+        <div id="benchmark-methodology" className="mb-5 border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-700">
           <p><span className="font-medium text-black">Portfolio:</span> the total value of your financial instruments (quantity assets only), priced as in the net-worth table. Cash and manually valued assets are excluded.</p>
-          <p className="mt-2"><span className="font-medium text-black">Cashflows:</span> each contribution is invested in the benchmark at the start of the following month; withdrawal income is removed on its transaction date. Contribution investment dates are marked on the chart.</p>
-          <p className="mt-2"><span className="font-medium text-black">Benchmark:</span> it is valued daily in the primary reporting currency and rebalanced at the selected interval. IRR is annualized and money-weighted, using the starting value, scheduled contribution and withdrawal dates, and the ending value.</p>
+          <p className="mt-1.5"><span className="font-medium text-black">Cashflows:</span> each contribution is invested in the benchmark at the start of the following month; withdrawal income is removed on its transaction date. Contribution investment dates are marked on the chart.</p>
+          <p className="mt-1.5"><span className="font-medium text-black">Benchmark:</span> it is valued daily in the primary reporting currency and rebalanced at the selected interval. IRR is annualized and money-weighted, using the starting value, scheduled contribution and withdrawal dates, and the ending value.</p>
         </div>
       )}
 
-      <div className="mb-6 flex flex-wrap items-end gap-x-6 gap-y-4 border-y border-zinc-200 py-4">
+      <div className="mb-5 flex flex-wrap items-end gap-x-6 gap-y-3 border-y border-zinc-200 py-3">
         <label className="grid gap-1.5 text-sm font-medium text-zinc-800">
           Benchmark
-          <select value={benchmark} onChange={(event) => setBenchmark(event.target.value as BenchmarkId)} className="border border-zinc-300 bg-white px-3 py-1.5 font-normal text-black focus:outline-2 focus:outline-offset-2 focus:outline-black">
+          <select value={benchmark} onChange={(event) => setBenchmark(event.target.value as BenchmarkId)} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus:outline-offset-2 focus:outline-black">
             {Object.entries(benchmarkNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label className="grid gap-1.5 text-sm font-medium text-zinc-800">
           Rebalancing
-          <select value={rebalancePeriod} onChange={(event) => setRebalancePeriod(event.target.value as RebalancePeriod)} className="border border-zinc-300 bg-white px-3 py-1.5 font-normal text-black focus:outline-2 focus:outline-offset-2 focus:outline-black">
+          <select value={rebalancePeriod} onChange={(event) => setRebalancePeriod(event.target.value as RebalancePeriod)} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus:outline-offset-2 focus:outline-black">
             {Object.entries(rebalanceNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
       </div>
 
-      <p className="mb-6 text-sm text-zinc-600"><span className="font-medium text-zinc-800">Instruments:</span> {benchmarkInstruments[benchmark]}</p>
+      <p className="mb-5 text-sm text-zinc-600"><span className="font-medium text-zinc-800">Instruments:</span> {benchmarkInstruments[benchmark]}</p>
 
       {hasData ? (
         <div className="h-80 w-full" aria-label={`Portfolio compared with ${benchmarkNames[benchmark]}`}>
@@ -128,7 +128,7 @@ export function BenchmarkComparison({ inputs }: { inputs: BenchmarkInput[] }) {
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="border border-zinc-300 p-4 text-sm text-zinc-700">Benchmark data is unavailable for the current reporting history.</p>
+        <p className="border border-zinc-300 px-4 py-3 text-sm text-zinc-700">Benchmark data is unavailable for the current reporting history.</p>
       )}
 
     </section>
