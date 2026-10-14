@@ -47,12 +47,11 @@ function formatMoney(value: number | null) {
       );
 }
 
-function formatMoneyToOneDecimal(value: number | null) {
+function formatMoneyToInteger(value: number | null) {
   return value === null
     ? "—"
     : new Intl.NumberFormat("en-GB", {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
+        maximumFractionDigits: 0,
       }).format(value);
 }
 
@@ -586,7 +585,7 @@ export function CashflowDashboard({
         className="overflow-x-auto border border-zinc-300 bg-white"
         aria-label="Cashflow summary"
       >
-        <table className="w-full min-w-225 table-fixed border-collapse text-xs">
+        <table className="w-full table-fixed border-collapse text-xs">
           <colgroup>
             <col className="w-[16%]" />
             {report.periods.map((period) => (
@@ -597,19 +596,19 @@ export function CashflowDashboard({
           </colgroup>
           <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
             <tr>
-              <th className="border border-zinc-300 px-2 py-1.5">Cashflow</th>
+              <th className="border border-zinc-300 px-2 py-1">Cashflow</th>
               {report.periods.map((period) => (
                 <th
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right"
+                  className="border border-zinc-300 px-2 py-1 text-right"
                 >
                   {formatMonth(period.period)}
                 </th>
               ))}
-              <th className="border border-zinc-300 px-2 py-1.5 text-right">
+              <th className="border border-zinc-300 px-2 py-1 text-right">
                 Total
               </th>
-              <th className="border border-zinc-300 px-2 py-1.5 text-right">
+              <th className="border border-zinc-300 px-2 py-1 text-right">
                 Monthly avg
               </th>
             </tr>
@@ -618,7 +617,7 @@ export function CashflowDashboard({
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
                 colSpan={report.periods.length + 3}
-                className="border border-zinc-300 px-2 py-1.5"
+                className="border border-zinc-300 px-2 py-1"
               >
                 Income
               </th>
@@ -627,19 +626,19 @@ export function CashflowDashboard({
               <tr key={category}>
                 <th
                   scope="row"
-                  className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black"
+                  className="border border-zinc-300 px-2 py-1 text-left font-medium text-black"
                 >
                   {category}
                 </th>
                 {report.periods.map((period) => (
                   <td
                     key={period.period}
-                    className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                    className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                   >
                     {formatMoney(period.incomeCategories[category])}
                   </td>
                 ))}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">
+                <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     report.periods.reduce(
                       (total, period) =>
@@ -648,7 +647,7 @@ export function CashflowDashboard({
                     ),
                   )}
                 </td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">
+                <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     monthlyAverage(
                       averagePeriods.map(
@@ -662,22 +661,22 @@ export function CashflowDashboard({
             <tr className="bg-zinc-50 font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Total income
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatMoney(period.income)}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(report.totalIncome)}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(averagePeriods.map((period) => period.income)),
                 )}
@@ -688,7 +687,7 @@ export function CashflowDashboard({
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
                 colSpan={report.periods.length + 3}
-                className="border border-zinc-300 px-2 py-1.5"
+                className="border border-zinc-300 px-2 py-1"
               >
                 Expenses
               </th>
@@ -697,19 +696,19 @@ export function CashflowDashboard({
               <tr key={category}>
                 <th
                   scope="row"
-                  className="border border-zinc-300 px-2 py-1.5 text-left font-medium text-black"
+                  className="border border-zinc-300 px-2 py-1 text-left font-medium text-black"
                 >
                   {category}
                 </th>
                 {report.periods.map((period) => (
                   <td
                     key={period.period}
-                    className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                    className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                   >
                     {formatMoney(period.categories[category])}
                   </td>
                 ))}
-                <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">
+                <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     report.periods.reduce(
                       (total, period) =>
@@ -718,7 +717,7 @@ export function CashflowDashboard({
                     ),
                   )}
                 </td>
-                <td className="border border-zinc-300 px-2 py-1.5 text-right font-semibold tabular-nums">
+                <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     monthlyAverage(
                       averagePeriods.map(
@@ -732,19 +731,19 @@ export function CashflowDashboard({
             <tr className="font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Expense (no rent)
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatMoney(expensesExcluding(period, ["rent"]))}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   report.periods.reduce(
                     (total, period) =>
@@ -753,7 +752,7 @@ export function CashflowDashboard({
                   ),
                 )}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
                     averagePeriods.map((period) =>
@@ -766,21 +765,21 @@ export function CashflowDashboard({
             <tr className="font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Expense (no rent and health insurance)
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatMoney(
                     expensesExcluding(period, ["rent", "health insurance"]),
                   )}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   report.periods.reduce(
                     (total, period) =>
@@ -793,7 +792,7 @@ export function CashflowDashboard({
                   ),
                 )}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
                     averagePeriods.map((period) =>
@@ -806,22 +805,22 @@ export function CashflowDashboard({
             <tr className="bg-zinc-50 font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Expenses
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatMoney(period.expenses)}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(report.totalExpenses)}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
                     averagePeriods.map((period) => period.expenses),
@@ -834,7 +833,7 @@ export function CashflowDashboard({
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
                 colSpan={report.periods.length + 3}
-                className="border border-zinc-300 px-2 py-1.5"
+                className="border border-zinc-300 px-2 py-1"
               >
                 Savings
               </th>
@@ -842,22 +841,22 @@ export function CashflowDashboard({
             <tr className="font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Savings
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatMoney(period.savings)}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(report.totalSavings)}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
                     averagePeriods.map((period) => period.savings),
@@ -868,26 +867,26 @@ export function CashflowDashboard({
             <tr className="font-semibold">
               <th
                 scope="row"
-                className="border border-zinc-300 px-2 py-1.5 text-left"
+                className="border border-zinc-300 px-2 py-1 text-left"
               >
                 Savings rate
               </th>
               {report.periods.map((period) => (
                 <td
                   key={period.period}
-                  className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums"
+                  className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
                 >
                   {formatPercent(period.savingsRate)}
                 </td>
               ))}
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatPercent(
                   report.totalIncome === 0
                     ? null
                     : report.totalSavings / report.totalIncome,
                 )}
               </td>
-              <td className="border border-zinc-300 px-2 py-1.5 text-right tabular-nums">
+              <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatPercent(
                   averageRate(
                     averagePeriods.map((period) => period.savingsRate),
@@ -1185,7 +1184,7 @@ export function CashflowDashboard({
             label="Total expenses"
             value={filteredTotalExpenses}
             currency={insightCurrency}
-            formatValue={formatMoneyToOneDecimal}
+            formatValue={formatMoneyToInteger}
           />
           <Metric
             label="DAILY AVG EXPENSES"
@@ -1195,7 +1194,7 @@ export function CashflowDashboard({
                 : filteredTotalExpenses / daysInSelection
             }
             currency={insightCurrency}
-            formatValue={formatMoneyToOneDecimal}
+            formatValue={formatMoneyToInteger}
           />
           <Metric
             label="Salary"
@@ -1204,7 +1203,7 @@ export function CashflowDashboard({
               0,
             )}
             currency={insightCurrency}
-            formatValue={formatMoneyToOneDecimal}
+            formatValue={formatMoneyToInteger}
           />
           <Metric
             label="Essential expenses"
@@ -1446,32 +1445,32 @@ export function CashflowDashboard({
             </div>
           </div>
           <div className="overflow-x-auto border border-zinc-300 bg-white">
-            <table className="w-full text-xs">
-              <thead className="bg-zinc-100 text-left text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+            <table className="w-full table-fixed border-collapse text-xs">
+              <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
                 <tr>
-                  <th className="px-2 py-1.5">
+                  <th className="border border-zinc-300 px-2 py-1">
                     MOV. AVG. expenses by parent category
                   </th>
-                  <th className="px-2 py-1.5 text-right">Daily AVG</th>
-                  <th className="px-2 py-1.5 text-right">TOT</th>
+                  <th className="border border-zinc-300 px-2 py-1 text-right">Daily AVG</th>
+                  <th className="border border-zinc-300 px-2 py-1 text-right">TOT</th>
                 </tr>
               </thead>
               <tbody>
                 {movingAverageCategories.map((category) => (
                   <tr key={category}>
-                    <th className="border-t border-zinc-300 px-2 py-1.5 text-left font-medium">
+                    <th className="border border-zinc-300 px-2 py-1 text-left font-medium">
                       {category}
                     </th>
-                    <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                      {formatMoneyToOneDecimal(
+                    <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                      {formatMoneyToInteger(
                         movingAverageData
                           .filter((period) => period.period <= cutoff)
                           .at(-1)?.categories[category] ?? null,
                       )}{" "}
                       {insightCurrency}
                     </td>
-                    <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                      {formatMoneyToOneDecimal(
+                    <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                      {formatMoneyToInteger(
                         filteredExpenses
                           .filter(
                             (expense) => expense.parentCategory === category,
@@ -1483,28 +1482,28 @@ export function CashflowDashboard({
                   </tr>
                 ))}
                 <tr className="bg-zinc-50 font-semibold">
-                  <th className="border-t border-zinc-300 px-2 py-1.5 text-left">
+                  <th className="border border-zinc-300 px-2 py-1 text-left">
                     TOT
                   </th>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       daysInSelection === 0
                         ? null
                         : filteredTotalExpenses / daysInSelection,
                     )}{" "}
                     {insightCurrency}
                   </td>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(filteredTotalExpenses)}{" "}
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(filteredTotalExpenses)}{" "}
                     {insightCurrency}
                   </td>
                 </tr>
                 <tr className="font-semibold">
-                  <th className="border-t border-zinc-300 px-2 py-1.5 text-left">
+                  <th className="border border-zinc-300 px-2 py-1 text-left">
                     TOT (NO RENT)
                   </th>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       daysInSelection === 0
                         ? null
                         : filteredExpenses
@@ -1517,8 +1516,8 @@ export function CashflowDashboard({
                     )}{" "}
                     {insightCurrency}
                   </td>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       filteredExpenses
                         .filter(
                           (expense) =>
@@ -1530,11 +1529,11 @@ export function CashflowDashboard({
                   </td>
                 </tr>
                 <tr className="font-semibold">
-                  <th className="border-t border-zinc-300 px-2 py-1.5 text-left">
+                  <th className="border border-zinc-300 px-2 py-1 text-left">
                     TOT ESSENTIAL
                   </th>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       daysInSelection === 0
                         ? null
                         : filteredExpenses
@@ -1544,8 +1543,8 @@ export function CashflowDashboard({
                     )}{" "}
                     {insightCurrency}
                   </td>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       filteredExpenses
                         .filter((expense) => expense.isEssential)
                         .reduce((sum, expense) => sum + expense.amount, 0),
@@ -1554,11 +1553,11 @@ export function CashflowDashboard({
                   </td>
                 </tr>
                 <tr className="font-semibold">
-                  <th className="border-t border-zinc-300 px-2 py-1.5 text-left">
+                  <th className="border border-zinc-300 px-2 py-1 text-left">
                     TOT RECURRING
                   </th>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       daysInSelection === 0
                         ? null
                         : filteredExpenses
@@ -1568,8 +1567,8 @@ export function CashflowDashboard({
                     )}{" "}
                     {insightCurrency}
                   </td>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       filteredExpenses
                         .filter((expense) => expense.isRecurring)
                         .reduce((sum, expense) => sum + expense.amount, 0),
@@ -1578,11 +1577,11 @@ export function CashflowDashboard({
                   </td>
                 </tr>
                 <tr className="font-semibold">
-                  <th className="border-t border-zinc-300 px-2 py-1.5 text-left">
+                  <th className="border border-zinc-300 px-2 py-1 text-left">
                     TOT DISCRETIONARY
                   </th>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       daysInSelection === 0
                         ? null
                         : filteredExpenses
@@ -1592,8 +1591,8 @@ export function CashflowDashboard({
                     )}{" "}
                     {insightCurrency}
                   </td>
-                  <td className="border-t border-zinc-300 px-2 py-1.5 text-right tabular-nums">
-                    {formatMoneyToOneDecimal(
+                  <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+                    {formatMoneyToInteger(
                       filteredExpenses
                         .filter((expense) => !expense.isEssential)
                         .reduce((sum, expense) => sum + expense.amount, 0),
