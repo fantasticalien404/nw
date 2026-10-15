@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -20,9 +20,9 @@ import {
 } from "@/lib/analytics/cashflow";
 
 type CashflowDashboardProps = {
-  report: CashflowReport;
   reports: Record<string, CashflowReport>;
   currency: string;
+  reportingDate: string;
 };
 
 const categoryColors = [
@@ -36,38 +36,42 @@ const categoryColors = [
   "#047857",
 ];
 
+const moneyFormatter = new Intl.NumberFormat("en-GB", {
+  maximumFractionDigits: 0,
+});
+const percentFormatter = new Intl.NumberFormat("en-GB", {
+  style: "percent",
+  maximumFractionDigits: 0,
+});
+const monthFormatter = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  timeZone: "UTC",
+});
+const fullMonthFormatter = new Intl.DateTimeFormat("en-GB", {
+  month: "long",
+  timeZone: "UTC",
+});
+const monthOptions = Array.from({ length: 12 }, (_, index) => {
+  const value = String(index + 1).padStart(2, "0");
+  return {
+    value,
+    label: fullMonthFormatter.format(new Date(`2026-${value}-01T00:00:00Z`)),
+  };
+});
+
 function formatMoney(value: number | null) {
-  return value === null
-    ? "—"
-    : new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(
-        value,
-      );
+  return value === null ? "—" : moneyFormatter.format(value);
 }
 
-function formatMoneyToInteger(value: number | null) {
-  return value === null
-    ? "—"
-    : new Intl.NumberFormat("en-GB", {
-        maximumFractionDigits: 0,
-      }).format(value);
-}
+const formatMoneyToInteger = formatMoney;
 
 function formatMonth(period: string) {
   const date = new Date(`${period}T00:00:00Z`);
-  const month = new Intl.DateTimeFormat("en-GB", {
-    month: "short",
-    timeZone: "UTC",
-  }).format(date);
-  return `${month}-${String(date.getUTCFullYear()).slice(-2)}`;
+  return `${monthFormatter.format(date)}-${String(date.getUTCFullYear()).slice(-2)}`;
 }
 
 function formatPercent(value: number | null) {
-  return value === null
-    ? "—"
-    : new Intl.NumberFormat("en-GB", {
-        style: "percent",
-        maximumFractionDigits: 0,
-      }).format(value);
+  return value === null ? "—" : percentFormatter.format(value);
 }
 
 function Metric({
@@ -99,10 +103,10 @@ function axisValue(value: number) {
 }
 
 function monthlyAverage(values: Array<number | null>) {
-  return (
-    values.reduce<number>((total, value) => total + (value ?? 0), 0) /
-    values.length
-  );
+  return values.length === 0
+    ? null
+    : values.reduce<number>((total, value) => total + (value ?? 0), 0) /
+        values.length;
 }
 
 function averageRate(values: Array<number | null>) {
@@ -129,15 +133,15 @@ function expensesExcluding(
   return period.expenses - excludedExpenses;
 }
 
-function previousMonth() {
-  const date = new Date();
+function previousMonth(reportingDate: string) {
+  const date = new Date(`${reportingDate}T00:00:00Z`);
   date.setUTCDate(1);
   date.setUTCMonth(date.getUTCMonth() - 1);
   return date.toISOString().slice(0, 10);
 }
 
-function availableReportMonths(report: CashflowReport) {
-  const currentMonth = new Date().toISOString().slice(0, 7);
+function availableReportMonths(report: CashflowReport, reportingDate: string) {
+  const currentMonth = reportingDate.slice(0, 7);
   return report.periods.filter((period) =>
     period.period.slice(0, 7) <= currentMonth &&
     [period.income, period.expenses].some((value) => value !== null),
@@ -188,7 +192,6 @@ function ChartTooltip({
 }: {
   active?: boolean;
   payload?: Array<{
-    dataKey?: string;
     name?: string;
     value?: number | null;
     payload?: CashflowPeriod;
@@ -213,8 +216,8 @@ function ChartTooltip({
           </p>
         </>
       ) : (
-        payload.map((entry) => (
-          <p key={entry.dataKey} className="text-zinc-700">
+        payload.map((entry, index) => (
+          <p key={entry.name ?? index} className="text-zinc-700">
             {entry.name}: {formatMoney(entry.value ?? null)} {currency}
           </p>
         ))
@@ -223,9 +226,9 @@ function ChartTooltip({
   );
 }
 
-function SectionHeading({ title }: { title: string }) {
+function SectionHeading({ title, id }: { title: string; id?: string }) {
   return (
-    <h2 className="mb-5 text-xl font-medium tracking-tight text-black">
+    <h2 id={id} className="mb-5 text-xl font-medium tracking-tight text-black">
       {title}
     </h2>
   );
@@ -312,10 +315,13 @@ function InsightLine({
 }
 
 export function CashflowDashboard({
-  report,
   reports,
   currency,
+  reportingDate,
 }: CashflowDashboardProps) {
+  const categoryMenuId = useId();
+  const report = reports[currency];
+  const cutoff = previousMonth(reportingDate);
   const [insightCurrency, setInsightCurrency] = useState(currency);
   const summaryYears = [...new Set(report.periods.map((period) => period.period.slice(0, 4)))];
   const [selectedSummaryYear, setSelectedSummaryYear] = useState(
@@ -333,9 +339,7 @@ export function CashflowDashboard({
   const [classification, setClassification] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [customStart, setCustomStart] = useState("2025-11-01");
-  const [customEnd, setCustomEnd] = useState(
-    () => new Date().toISOString().slice(0, 10),
-  );
+  const [customEnd, setCustomEnd] = useState(reportingDate);
   const [expenseAggregation, setExpenseAggregation] = useState<
     "category" | "parent"
   >("category");
@@ -350,14 +354,11 @@ export function CashflowDashboard({
     () => report.parentCategories.find((category) => category.toLowerCase() === "food") ?? "",
   );
   const [showHistoricalSalary, setShowHistoricalSalary] = useState(false);
-  const currentPeriod = report.periods
-    .filter((period) => period.period <= previousMonth())
-    .at(-1);
   const summaryPeriods = report.periods.filter((period) =>
     period.period.startsWith(selectedSummaryYear),
   );
   const summaryAveragePeriods = summaryPeriods.filter(
-    (period) => period.period <= previousMonth(),
+    (period) => period.period <= cutoff,
   );
   const summaryTotalIncome = summaryPeriods.reduce(
     (total, period) => total + (period.income ?? 0),
@@ -368,12 +369,14 @@ export function CashflowDashboard({
     0,
   );
   const summaryTotalSavings = summaryTotalIncome - summaryTotalExpenses;
-  const cutoff = previousMonth();
-  const periodData = reportingYearMonths(report, cutoff);
+  const periodData = useMemo(
+    () => reportingYearMonths(report, cutoff),
+    [report, cutoff],
+  );
   const insightReport = reports[insightCurrency];
   const categoryOptions = insightReport.expenseCategories;
   const parentOptions = insightReport.parentCategories;
-  const reportingEndDate = new Date().toISOString().slice(0, 10);
+  const reportingEndDate = reportingDate;
   const insightRangeStart = customStart;
   const insightRangeEnd = customEnd;
   const hasValidRange = Boolean(
@@ -381,91 +384,117 @@ export function CashflowDashboard({
     insightRangeEnd &&
     insightRangeStart <= insightRangeEnd,
   );
-  const filteredExpenses = insightReport.expenseTransactions.filter(
-    (expense) =>
-      (selectedMonth !== "all" || hasValidRange) &&
-      (selectedMonth === "all"
-        ? expense.date >= insightRangeStart && expense.date <= insightRangeEnd
-        : expense.date.slice(5, 7) === selectedMonth) &&
-      (selectedCategories.size === 0 ||
-        selectedCategories.has(expense.category)) &&
-      (selectedParents.size === 0 ||
-        selectedParents.has(expense.parentCategory)) &&
-      (classification === "all" ||
-        (classification === "essential"
-          ? expense.isEssential
-          : classification === "discretionary"
-            ? !expense.isEssential
-            : classification === "recurring"
-              ? expense.isRecurring
-              : !expense.isRecurring)),
+  const filteredExpenses = useMemo(
+    () => insightReport.expenseTransactions.filter(
+      (expense) =>
+        (selectedMonth !== "all" || hasValidRange) &&
+        (selectedMonth === "all"
+          ? expense.date >= insightRangeStart && expense.date <= insightRangeEnd
+          : expense.date.slice(5, 7) === selectedMonth) &&
+        (selectedCategories.size === 0 ||
+          selectedCategories.has(expense.category)) &&
+        (selectedParents.size === 0 ||
+          selectedParents.has(expense.parentCategory)) &&
+        (classification === "all" ||
+          (classification === "essential"
+            ? expense.isEssential
+            : classification === "discretionary"
+              ? !expense.isEssential
+              : classification === "recurring"
+                ? expense.isRecurring
+                : !expense.isRecurring)),
+    ),
+    [
+      insightReport,
+      selectedMonth,
+      hasValidRange,
+      insightRangeStart,
+      insightRangeEnd,
+      selectedCategories,
+      selectedParents,
+      classification,
+    ],
   );
-  const filteredExpenseMonths = new Set(
-    filteredExpenses.map((expense) => `${expense.date.slice(0, 7)}-01`),
+  const expensesByMonth = useMemo(() => {
+    const months = new Map<string, typeof filteredExpenses>();
+    for (const expense of filteredExpenses) {
+      const month = `${expense.date.slice(0, 7)}-01`;
+      const expenses = months.get(month) ?? [];
+      expenses.push(expense);
+      months.set(month, expenses);
+    }
+    return months;
+  }, [filteredExpenses]);
+  const insightPeriodData = useMemo(
+    () => availableReportMonths(insightReport, reportingDate)
+      .filter((period) => expensesByMonth.has(period.period))
+      .map((period) => {
+        const expenses = expensesByMonth.get(period.period)!;
+        const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const essential = expenses
+          .filter((expense) => expense.isEssential)
+          .reduce((sum, expense) => sum + expense.amount, 0);
+        const recurring = expenses
+          .filter((expense) => expense.isRecurring)
+          .reduce((sum, expense) => sum + expense.amount, 0);
+        return {
+          ...period,
+          label: formatMonth(period.period),
+          expenses: total,
+          essentialExpenses: essential,
+          discretionaryExpenses: total - essential,
+          recurringExpenses: recurring,
+          nonRecurringExpenses: total - recurring,
+          savingsRate:
+            period.income === null || period.income === 0
+              ? null
+              : (period.income - total) / period.income,
+        };
+      }),
+    [insightReport, reportingDate, expensesByMonth],
   );
-  const insightPeriodData = availableReportMonths(insightReport)
-    .filter((period) => filteredExpenseMonths.has(period.period))
-    .map((period) => {
-      const expenses = filteredExpenses.filter(
-        (expense) => `${expense.date.slice(0, 7)}-01` === period.period,
-      );
-      const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-      const essential = expenses
-        .filter((expense) => expense.isEssential)
-        .reduce((sum, expense) => sum + expense.amount, 0);
-      const recurring = expenses
-        .filter((expense) => expense.isRecurring)
-        .reduce((sum, expense) => sum + expense.amount, 0);
-      return {
-        ...period,
-        label: formatMonth(period.period),
-        expenses: total,
-        essentialExpenses: essential,
-        discretionaryExpenses: total - essential,
-        recurringExpenses: recurring,
-        nonRecurringExpenses: total - recurring,
-        savingsRate:
-          period.income === null || period.income === 0
-            ? null
-            : (period.income - total) / period.income,
-      };
-    });
   const expenseSeries = (expenseAggregation === "category"
     ? categoryOptions
     : parentOptions
   ).map((name, index) => ({ name, dataKey: `expense-${index}` }));
-  const histogramByMonth = filteredExpenses.reduce(
-    (months, expense) => {
+  const histogramByMonth = useMemo(() => {
+    const months = new Map<string, Map<string, number>>();
+    for (const expense of filteredExpenses) {
       const month = `${expense.date.slice(0, 7)}-01`;
       const grouping = expenseAggregation === "category"
         ? expense.category
         : expense.parentCategory;
-      const categories = months.get(month) ?? {};
-      categories[grouping] = (categories[grouping] ?? 0) + expense.amount;
+      const categories = months.get(month) ?? new Map<string, number>();
+      categories.set(grouping, (categories.get(grouping) ?? 0) + expense.amount);
       months.set(month, categories);
-      return months;
-    },
-    new Map<string, Record<string, number>>(),
-  );
-  const movingAverageByMonth = new Map<string, Record<string, number>>();
-  for (const period of buildExpenseMovingAverage(
+    }
+    return months;
+  }, [filteredExpenses, expenseAggregation]);
+  const movingAverageByMonth = useMemo(() => {
+    const months = new Map<string, Record<string, number>>();
+    for (const period of buildExpenseMovingAverage(
+      filteredExpenses,
+      movingAverageDays,
+      insightReport.rangeStart,
+      insightReport.rangeEnd,
+    )) {
+      if (period.period <= cutoff)
+        months.set(`${period.period.slice(0, 7)}-01`, period.categories);
+    }
+    return months;
+  }, [
     filteredExpenses,
     movingAverageDays,
     insightReport.rangeStart,
     insightReport.rangeEnd,
-  )) {
-    if (period.period <= cutoff)
-      movingAverageByMonth.set(
-        `${period.period.slice(0, 7)}-01`,
-        period.categories,
-      );
-  }
+    cutoff,
+  ]);
   const histogramData = insightPeriodData.map((period) => {
-    const categories = histogramByMonth.get(period.period) ?? {};
+    const categories = histogramByMonth.get(period.period);
     return {
       ...period,
       ...Object.fromEntries(
-        expenseSeries.map(({ name, dataKey }) => [dataKey, categories[name] ?? 0]),
+        expenseSeries.map(({ name, dataKey }) => [dataKey, categories?.get(name) ?? 0]),
       ),
     };
   });
@@ -487,15 +516,13 @@ export function CashflowDashboard({
   }));
   const historicalExpenseData = insightPeriodData.map((period) => ({
     label: period.label,
-    expenses: historicalExpenseCategory
-      ? filteredExpenses
-          .filter((expense) => expense.category === historicalExpenseCategory && `${expense.date.slice(0, 7)}-01` === period.period)
+    expenses: historicalExpenseCategory || historicalParentCategory
+      ? (expensesByMonth.get(period.period) ?? [])
+          .filter((expense) => historicalExpenseCategory
+            ? expense.category === historicalExpenseCategory
+            : expense.parentCategory === historicalParentCategory)
           .reduce((sum, expense) => sum + expense.amount, 0)
-      : historicalParentCategory
-        ? filteredExpenses
-            .filter((expense) => expense.parentCategory === historicalParentCategory && `${expense.date.slice(0, 7)}-01` === period.period)
-            .reduce((sum, expense) => sum + expense.amount, 0)
-        : null,
+      : null,
     salary: showHistoricalSalary ? period.salary : null,
   }));
   const historicalExpenseLabel = historicalExpenseCategory || historicalParentCategory;
@@ -508,16 +535,14 @@ export function CashflowDashboard({
     >
   >((data, period) => {
     const previous = data.at(-1);
-    return [
-      ...data,
-      {
-        ...period,
-        cumulativeSalary:
-          (previous?.cumulativeSalary ?? 0) + (period.chartIncome ?? 0),
-        cumulativeExpenses:
-          (previous?.cumulativeExpenses ?? 0) + (period.expenses ?? 0),
-      },
-    ];
+    data.push({
+      ...period,
+      cumulativeSalary:
+        (previous?.cumulativeSalary ?? 0) + (period.chartIncome ?? 0),
+      cumulativeExpenses:
+        (previous?.cumulativeExpenses ?? 0) + (period.expenses ?? 0),
+    });
+    return data;
   }, []);
   const filteredTotalExpenses = filteredExpenses.reduce(
     (sum, expense) => sum + expense.amount,
@@ -542,7 +567,7 @@ export function CashflowDashboard({
     <div className="space-y-10">
       <section
         className="border-b border-zinc-300 pb-6"
-        aria-labelledby="monthly-cashflow-heading"
+        aria-label="Monthly cashflow"
       >
         <div className="h-72 w-full">
           <ResponsiveContainer>
@@ -953,9 +978,10 @@ export function CashflowDashboard({
         className="space-y-8 pt-0"
         aria-labelledby="expense-insights-heading"
       >
-        <SectionHeading id="expense-insights-heading"/>
-        <div className="border border-zinc-300 bg-zinc-50 p-4">
-          <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-7">
+        <h2 id="expense-insights-heading" className="mb-5 text-xl font-medium tracking-tight text-black">
+          <span className="sr-only">Expense insights</span>
+        </h2>
+        <div className="grid items-end gap-3 border border-zinc-300 bg-zinc-50 p-4 sm:grid-cols-2 lg:grid-cols-7">
             <label className="text-xs font-medium text-zinc-700">
               Display currency
               <select
@@ -999,20 +1025,12 @@ export function CashflowDashboard({
                 onChange={(event) => setSelectedMonth(event.target.value)}
               >
                 <option value="all">Use date range</option>
-                {Array.from({ length: 12 }, (_, index) => {
-                  const value = String(index + 1).padStart(2, "0");
-                  return (
-                    <option key={value} value={value}>
-                      {new Intl.DateTimeFormat("en-GB", {
-                        month: "long",
-                        timeZone: "UTC",
-                      }).format(new Date(`2026-${value}-01T00:00:00Z`))}
-                    </option>
-                  );
-                })}
+                {monthOptions.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
-            <fieldset className="sm:col-span-2 lg:col-span-2">
+            <fieldset className="sm:col-span-2 lg:col-span-2" aria-label="Date range">
               <div className="mt-1 grid grid-cols-2 gap-2">
                 <label className="text-xs text-zinc-600">
                   From
@@ -1047,6 +1065,8 @@ export function CashflowDashboard({
               <button
                 type="button"
                 className="w-full border border-zinc-300 bg-white px-3 py-2 text-sm font-medium"
+                aria-expanded={openCategoryMenu === "parent"}
+                aria-controls={openCategoryMenu === "parent" ? `${categoryMenuId}-parent` : undefined}
                 onClick={() =>
                   setOpenCategoryMenu((menu) =>
                     menu === "parent" ? null : "parent",
@@ -1057,7 +1077,7 @@ export function CashflowDashboard({
                 {selectedParents.size > 0 ? ` (${selectedParents.size})` : ""}
               </button>
               {openCategoryMenu === "parent" && (
-                <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg">
+                <div id={`${categoryMenuId}-parent`} className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg">
                   <div className="mb-3 flex justify-between text-xs underline">
                     <button
                       type="button"
@@ -1101,6 +1121,8 @@ export function CashflowDashboard({
               <button
                 type="button"
                 className="w-full border border-zinc-300 bg-white px-3 py-2 text-sm font-medium"
+                aria-expanded={openCategoryMenu === "category"}
+                aria-controls={openCategoryMenu === "category" ? `${categoryMenuId}-category` : undefined}
                 onClick={() =>
                   setOpenCategoryMenu((menu) =>
                     menu === "category" ? null : "category",
@@ -1113,7 +1135,7 @@ export function CashflowDashboard({
                   : ""}
               </button>
               {openCategoryMenu === "category" && (
-                <div className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg">
+                <div id={`${categoryMenuId}-category`} className="absolute z-10 mt-1 w-80 border border-zinc-300 bg-white p-3 shadow-lg">
                   <div className="mb-3 flex justify-between text-xs underline">
                     <button
                       type="button"
@@ -1155,7 +1177,6 @@ export function CashflowDashboard({
                 </div>
               )}
             </div>
-          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -1346,7 +1367,7 @@ export function CashflowDashboard({
                   width={46}
                 />
                 <Tooltip
-                  content={<ChartTooltip currency={currency} showSavingsRate />}
+                  content={<ChartTooltip currency={insightCurrency} showSavingsRate />}
                   cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
                 />
                 <Line
@@ -1390,7 +1411,7 @@ export function CashflowDashboard({
               </label>
             </div>
             <div className="min-h-80 w-full flex-1">
-              <ResponsiveContainer>
+              <ResponsiveContainer minHeight={320}>
                 <LineChart
                   data={movingAverageData}
                   margin={{ top: 12, right: 18, bottom: 4, left: 0 }}
@@ -1431,7 +1452,9 @@ export function CashflowDashboard({
                     <Line
                       key={category}
                       type="monotone"
-                      dataKey={`categories.${category}`}
+                      dataKey={(period: (typeof movingAverageData)[number]) =>
+                        period.categories[category] ?? null
+                      }
                       name={category}
                       hide={hiddenMovingAverageCategories.has(category)}
                       stroke={categoryColors[index % categoryColors.length]}
@@ -1605,8 +1628,8 @@ export function CashflowDashboard({
           </div>
         </div>
 
-        <div aria-labelledby="cumulative-cashflow-heading">
-          <SectionHeading title="Cumulative cashflow" />
+        <section aria-labelledby="cumulative-cashflow-heading">
+          <SectionHeading id="cumulative-cashflow-heading" title="Cumulative cashflow" />
           <div className="h-72 w-full">
             <ResponsiveContainer>
               <AreaChart
@@ -1629,7 +1652,7 @@ export function CashflowDashboard({
                   width={54}
                 />
                 <Tooltip
-                  content={<ChartTooltip currency={currency} />}
+                  content={<ChartTooltip currency={insightCurrency} />}
                   cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
                 />
                 <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
@@ -1654,7 +1677,7 @@ export function CashflowDashboard({
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </section>
       </section>
 
       <section className="border-t border-zinc-300 pt-8" aria-label="Historical expenses">
@@ -1724,7 +1747,7 @@ export function CashflowDashboard({
                   width={54}
                 />
                 <Tooltip
-                  content={<ChartTooltip currency={currency} />}
+                  content={<ChartTooltip currency={insightCurrency} />}
                   cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
                 />
                 <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />

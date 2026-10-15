@@ -45,7 +45,11 @@ export default async function CashflowPage() {
       <header className="mb-2 pb-2">
         <h1 className="text-3xl font-semibold tracking-tight text-black">Cashflow</h1>
       </header>
-      <CashflowDashboard report={reports[currency]} reports={reports} currency={currency} />
+      <CashflowDashboard
+        reports={reports}
+        currency={currency}
+        reportingDate={new Date().toISOString().slice(0, 10)}
+      />
     </main>
   );
 }

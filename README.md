@@ -98,6 +98,8 @@ The `/nw` benchmark comparison invests every `contribution` in the benchmark at 
 4. Income and expenses are aggregated monthly. Expense category aggregation uses `CATEGORY → PARENT_CATEGORY`; blank categories remain unclassified rather than being guessed.
 5. Savings are $income - expenses$ and the monthly savings rate is $savings / income$ when income is non-zero.
 
+The server supplies the dashboard's UTC reporting date so the initial render and hydration share the same date boundaries. Expense filtering and moving-window calculations are memoized independently of legend and menu state. Run `npm run test:cashflow-ui` for synthetic render regression checks (including empty reports); this does not access Sheets or market-data files.
+
 ## Benchmark comparison
 
 The `/nw` page compares the financial-instruments portfolio—`quantity` rows only—with either a **60/40** benchmark (60% ACWI, 40% BND) or **100% stocks** (ACWI). Cash and manually valued assets are excluded from both the portfolio series and the comparison. Benchmark prices use dividend-adjusted closes, are converted daily into the selected reporting currency, and are rebalanced monthly by default; quarterly and yearly rebalancing are also available.
