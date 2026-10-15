@@ -55,10 +55,9 @@ export function NetWorthChart({ report, currencyIndex, onCurrencyChange }: NetWo
           <h2 id="net-worth-trend-heading" className="text-xl font-medium tracking-tight text-black">
             Trend
           </h2>
-          <p className="mt-1 text-sm text-zinc-600">Reporting periods through current value</p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-zinc-600">Change since first period</p>
+          <p className="text-sm text-zinc-600">Δ since first period</p>
           <p className="text-lg font-semibold tabular-nums text-black">{formatPercent(change)}</p>
         </div>
       </div>

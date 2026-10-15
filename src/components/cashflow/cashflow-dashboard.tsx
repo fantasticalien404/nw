@@ -340,6 +340,9 @@ export function CashflowDashboard({
   const [hiddenMovingAverageCategories, setHiddenMovingAverageCategories] =
     useState<Set<string>>(() => new Set());
   const [movingAverageDays, setMovingAverageDays] = useState(30);
+  const [historicalExpenseCategory, setHistoricalExpenseCategory] = useState("");
+  const [historicalParentCategory, setHistoricalParentCategory] = useState("");
+  const [showHistoricalSalary, setShowHistoricalSalary] = useState(false);
   const currentPeriod = report.periods
     .filter((period) => period.period <= previousMonth())
     .at(-1);
@@ -447,6 +450,16 @@ export function CashflowDashboard({
       ? (period.discretionaryExpenses ?? 0) / period.salary
       : null,
   }));
+  const historicalExpenseData = report.periods.map((period) => ({
+    label: formatMonth(period.period),
+    expenses: historicalExpenseCategory
+      ? (period.expenseCategories[historicalExpenseCategory] ?? 0)
+      : historicalParentCategory
+        ? (period.categories[historicalParentCategory] ?? 0)
+        : null,
+    salary: showHistoricalSalary ? period.salary : null,
+  }));
+  const historicalExpenseLabel = historicalExpenseCategory || historicalParentCategory;
   const cumulativeData = periodData.reduce<
     Array<
       (typeof periodData)[number] & {
@@ -1175,10 +1188,7 @@ export function CashflowDashboard({
             </div>
           </div>
         </div>
-        <p className="text-xs text-zinc-600">
-          Filters apply only to the following section only. Hide/show a category
-          by clicking on it.
-        </p>
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Metric
             label="Total expenses"
@@ -1655,6 +1665,107 @@ export function CashflowDashboard({
             </ResponsiveContainer>
           </div>
         </div>
+      </section>
+
+      <section className="border-t border-zinc-300 pt-8" aria-label="Historical expenses">
+        <SectionHeading title="Historical expenses" />
+        <div className="mb-5 flex flex-wrap items-end gap-3">
+          <label className="text-sm font-medium text-zinc-700">
+            Category
+            <select
+              className="ml-2 border border-zinc-300 bg-white px-2 py-1"
+              value={historicalExpenseCategory}
+              onChange={(event) => {
+                setHistoricalExpenseCategory(event.target.value);
+                setHistoricalParentCategory("");
+              }}
+            >
+              <option value="">Select a category</option>
+              {report.expenseCategories.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-zinc-700">
+            Parent category
+            <select
+              className="ml-2 border border-zinc-300 bg-white px-2 py-1"
+              value={historicalParentCategory}
+              onChange={(event) => {
+                setHistoricalParentCategory(event.target.value);
+                setHistoricalExpenseCategory("");
+              }}
+            >
+              <option value="">Select a parent category</option>
+              {report.parentCategories.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium aria-pressed:bg-zinc-100"
+            aria-pressed={showHistoricalSalary}
+            onClick={() => setShowHistoricalSalary((show) => !show)}
+          >
+            {showHistoricalSalary ? "Hide salary" : "Show salary"}
+          </button>
+        </div>
+        {historicalExpenseLabel ? (
+          <div className="h-80 w-full">
+            <ResponsiveContainer>
+              <LineChart
+                data={historicalExpenseData}
+                margin={{ top: 12, right: 18, bottom: 4, left: 0 }}
+              >
+                <CartesianGrid stroke="#d4d4d4" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  axisLine={{ stroke: "#171717" }}
+                  tickLine={false}
+                  tick={{ fill: "#525252", fontSize: 11 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: "#525252", fontSize: 11 }}
+                  tickFormatter={axisValue}
+                  width={54}
+                />
+                <Tooltip
+                  content={<ChartTooltip currency={currency} />}
+                  cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
+                />
+                <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="expenses"
+                  name={historicalExpenseLabel}
+                  stroke="#b91c1c"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                {showHistoricalSalary && (
+                  <Line
+                    type="monotone"
+                    dataKey="salary"
+                    name="Salary"
+                    stroke="#15803d"
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-600">
+            Select a category or parent category to view its complete expense history.
+          </p>
+        )}
       </section>
     </div>
   );

@@ -26,6 +26,11 @@ function formatPercentage(value: number | null) {
   return value === null ? "—" : `${value.toFixed(1)}%`;
 }
 
+function ytdPerformanceColor(value: number | null) {
+  if (value === null || value === 0) return "text-black";
+  return value > 0 ? "text-emerald-700" : "text-red-700";
+}
+
 function AssetName({ row }: { row: NetWorthRow }) {
   if (row.instrumentName && row.instrumentUrl) {
     return (
@@ -50,23 +55,27 @@ function AssetGroup({ label, rows, periods, currency }: { label: string; rows: N
           {label}
         </th>
       </tr>
-      {rows.map((row) => (
-        <tr key={`${row.datatype}-${row.asset}-${row.currency}`}>
-          <th scope="row" className="border border-zinc-300 px-2 py-1 text-left font-medium text-black">
-            <AssetName row={row} />
-          </th>
-          <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.asset}</td>
-          <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.currency}</td>
-          <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
-            {formatPercentage(row.ytdPerformance[currency] ?? null)}
-          </td>
-          {row.values.map((value, index) => (
-            <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
-              {formatMoney(value)}
+      {rows.map((row) => {
+        const ytdPerformance = row.ytdPerformance[currency] ?? null;
+
+        return (
+          <tr key={`${row.datatype}-${row.asset}-${row.currency}`}>
+            <th scope="row" className="border border-zinc-300 px-2 py-1 text-left font-medium text-black">
+              <AssetName row={row} />
+            </th>
+            <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.asset}</td>
+            <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{row.currency}</td>
+            <td className={`border border-zinc-300 px-2 py-1 text-right tabular-nums ${ytdPerformanceColor(ytdPerformance)}`}>
+              {formatPercentage(ytdPerformance)}
             </td>
-          ))}
-        </tr>
-      ))}
+            {row.values.map((value, index) => (
+              <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
+                {formatMoney(value)}
+              </td>
+            ))}
+          </tr>
+        );
+      })}
     </tbody>
   );
 }
@@ -103,9 +112,6 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
 
   return (
     <div className="w-full border border-zinc-300 bg-white">
-      <div className="border-b border-zinc-300 px-3 py-1.5">
-        <h2 className="font-medium text-black">Portfolio</h2>
-      </div>
       <table className="w-full table-fixed border-collapse text-xs">
         <colgroup>
           <col className="w-[22%]" />
