@@ -27,11 +27,25 @@ function formatAxis(value: number) {
   return `${Math.round(value)}`;
 }
 
-export function BenchmarkComparison({ inputs }: { inputs: BenchmarkInput[] }) {
+export function BenchmarkComparison({
+  inputs,
+  currencyIndex,
+  startDate,
+  endDate,
+}: {
+  inputs: BenchmarkInput[];
+  currencyIndex: number;
+  startDate: string;
+  endDate: string;
+}) {
   const [showMethodology, setShowMethodology] = useState(false);
-  const [currencyIndex, setCurrencyIndex] = useState(0);
   const [rebalancePeriod, setRebalancePeriod] = useState<RebalancePeriod>("monthly");
-  const input = inputs[currencyIndex] ?? inputs[0];
+  const selectedInput = inputs[currencyIndex] ?? inputs[0];
+  const input = useMemo(() => ({
+    ...selectedInput,
+    portfolio: selectedInput.portfolio.filter((point) => point.date >= startDate && point.date <= endDate),
+    cashflows: selectedInput.cashflows.filter((cashflow) => cashflow.date >= startDate && cashflow.date <= endDate),
+  }), [selectedInput, startDate, endDate]);
   const comparisons = useMemo(() => ({
     balanced: buildBenchmarkComparison(input, "balanced", rebalancePeriod),
     stocks: buildBenchmarkComparison(input, "stocks", rebalancePeriod),
@@ -54,12 +68,6 @@ export function BenchmarkComparison({ inputs }: { inputs: BenchmarkInput[] }) {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-zinc-200 pb-3">
         <h2 id="benchmark-heading" className="text-xl font-medium tracking-tight text-black">Benchmark comparison</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1 text-sm font-medium text-zinc-800">
-            
-            <select value={currencyIndex} onChange={(event) => setCurrencyIndex(Number(event.target.value))} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus:outline-offset-2 focus:outline-black">
-              {inputs.map((option, index) => <option key={option.currency} value={index}>{option.currency}</option>)}
-            </select>
-          </label>
           <label className="grid gap-1 text-sm font-medium text-zinc-800">
             
             <select value={rebalancePeriod} onChange={(event) => setRebalancePeriod(event.target.value as RebalancePeriod)} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">

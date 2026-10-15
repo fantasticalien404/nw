@@ -42,7 +42,7 @@ export default async function CashflowPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
-      <header className="mb-8 border-b border-zinc-300 pb-4">
+      <header className="mb-2 pb-2">
         <h1 className="text-3xl font-semibold tracking-tight text-black">Cashflow</h1>
       </header>
       <CashflowDashboard report={reports[currency]} reports={reports} currency={currency} />

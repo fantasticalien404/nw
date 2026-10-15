@@ -4,8 +4,6 @@ import { useState } from "react";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -16,7 +14,6 @@ import {
   YAxis,
 } from "recharts";
 import {
-  buildExpenseHistogram,
   buildExpenseMovingAverage,
   type CashflowPeriod,
   type CashflowReport,
@@ -137,6 +134,14 @@ function previousMonth() {
   date.setUTCDate(1);
   date.setUTCMonth(date.getUTCMonth() - 1);
   return date.toISOString().slice(0, 10);
+}
+
+function availableReportMonths(report: CashflowReport) {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  return report.periods.filter((period) =>
+    period.period.slice(0, 7) <= currentMonth &&
+    [period.income, period.expenses].some((value) => value !== null),
+  );
 }
 
 function reportingYearMonths(report: CashflowReport, cutoff: string) {
@@ -311,10 +316,11 @@ export function CashflowDashboard({
   reports,
   currency,
 }: CashflowDashboardProps) {
-  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [insightCurrency, setInsightCurrency] = useState(currency);
+  const summaryYears = [...new Set(report.periods.map((period) => period.period.slice(0, 4)))];
+  const [selectedSummaryYear, setSelectedSummaryYear] = useState(
+    () => summaryYears.at(-1) ?? "",
+  );
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => new Set(report.expenseCategories),
   );
@@ -326,14 +332,13 @@ export function CashflowDashboard({
   >(null);
   const [classification, setClassification] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState("all");
-  const [customStart, setCustomStart] = useState(
-    () => `${new Date().getUTCFullYear()}-01-01`,
+  const [customStart, setCustomStart] = useState("2025-11-01");
+  const [customEnd, setCustomEnd] = useState(
+    () => new Date().toISOString().slice(0, 10),
   );
-  const [customEnd, setCustomEnd] = useState(() => {
-    const date = new Date();
-    date.setUTCDate(0);
-    return date.toISOString().slice(0, 10);
-  });
+  const [expenseAggregation, setExpenseAggregation] = useState<
+    "category" | "parent"
+  >("category");
   const [hiddenExpenseCategories, setHiddenExpenseCategories] = useState<
     Set<string>
   >(() => new Set());
@@ -341,22 +346,34 @@ export function CashflowDashboard({
     useState<Set<string>>(() => new Set());
   const [movingAverageDays, setMovingAverageDays] = useState(30);
   const [historicalExpenseCategory, setHistoricalExpenseCategory] = useState("");
-  const [historicalParentCategory, setHistoricalParentCategory] = useState("");
+  const [historicalParentCategory, setHistoricalParentCategory] = useState(
+    () => report.parentCategories.find((category) => category.toLowerCase() === "food") ?? "",
+  );
   const [showHistoricalSalary, setShowHistoricalSalary] = useState(false);
   const currentPeriod = report.periods
     .filter((period) => period.period <= previousMonth())
     .at(-1);
-  const averagePeriods = report.periods.filter(
+  const summaryPeriods = report.periods.filter((period) =>
+    period.period.startsWith(selectedSummaryYear),
+  );
+  const summaryAveragePeriods = summaryPeriods.filter(
     (period) => period.period <= previousMonth(),
   );
+  const summaryTotalIncome = summaryPeriods.reduce(
+    (total, period) => total + (period.income ?? 0),
+    0,
+  );
+  const summaryTotalExpenses = summaryPeriods.reduce(
+    (total, period) => total + (period.expenses ?? 0),
+    0,
+  );
+  const summaryTotalSavings = summaryTotalIncome - summaryTotalExpenses;
   const cutoff = previousMonth();
   const periodData = reportingYearMonths(report, cutoff);
   const insightReport = reports[insightCurrency];
   const categoryOptions = insightReport.expenseCategories;
   const parentOptions = insightReport.parentCategories;
-  const reportingEnd = new Date(`${cutoff}T00:00:00Z`);
-  reportingEnd.setUTCMonth(reportingEnd.getUTCMonth() + 1, 0);
-  const reportingEndDate = reportingEnd.toISOString().slice(0, 10);
+  const reportingEndDate = new Date().toISOString().slice(0, 10);
   const insightRangeStart = customStart;
   const insightRangeEnd = customEnd;
   const hasValidRange = Boolean(
@@ -383,8 +400,12 @@ export function CashflowDashboard({
               ? expense.isRecurring
               : !expense.isRecurring)),
   );
-  const insightPeriodData = reportingYearMonths(insightReport, cutoff).map(
-    (period) => {
+  const filteredExpenseMonths = new Set(
+    filteredExpenses.map((expense) => `${expense.date.slice(0, 7)}-01`),
+  );
+  const insightPeriodData = availableReportMonths(insightReport)
+    .filter((period) => filteredExpenseMonths.has(period.period))
+    .map((period) => {
       const expenses = filteredExpenses.filter(
         (expense) => `${expense.date.slice(0, 7)}-01` === period.period,
       );
@@ -397,25 +418,34 @@ export function CashflowDashboard({
         .reduce((sum, expense) => sum + expense.amount, 0);
       return {
         ...period,
-        expenses: period.period <= cutoff ? total : null,
-        essentialExpenses: period.period <= cutoff ? essential : null,
-        discretionaryExpenses:
-          period.period <= cutoff ? total - essential : null,
-        recurringExpenses: period.period <= cutoff ? recurring : null,
-        nonRecurringExpenses:
-          period.period <= cutoff ? total - recurring : null,
+        label: formatMonth(period.period),
+        expenses: total,
+        essentialExpenses: essential,
+        discretionaryExpenses: total - essential,
+        recurringExpenses: recurring,
+        nonRecurringExpenses: total - recurring,
         savingsRate:
           period.income === null || period.income === 0
             ? null
             : (period.income - total) / period.income,
       };
+    });
+  const expenseSeries = (expenseAggregation === "category"
+    ? categoryOptions
+    : parentOptions
+  ).map((name, index) => ({ name, dataKey: `expense-${index}` }));
+  const histogramByMonth = filteredExpenses.reduce(
+    (months, expense) => {
+      const month = `${expense.date.slice(0, 7)}-01`;
+      const grouping = expenseAggregation === "category"
+        ? expense.category
+        : expense.parentCategory;
+      const categories = months.get(month) ?? {};
+      categories[grouping] = (categories[grouping] ?? 0) + expense.amount;
+      months.set(month, categories);
+      return months;
     },
-  );
-  const histogramByMonth = new Map(
-    buildExpenseHistogram(filteredExpenses, "month").map((period) => [
-      `${period.period}-01`,
-      period.categories,
-    ]),
+    new Map<string, Record<string, number>>(),
   );
   const movingAverageByMonth = new Map<string, Record<string, number>>();
   for (const period of buildExpenseMovingAverage(
@@ -430,10 +460,15 @@ export function CashflowDashboard({
         period.categories,
       );
   }
-  const histogramData = insightPeriodData.map((period) => ({
-    ...period,
-    categories: histogramByMonth.get(period.period) ?? {},
-  }));
+  const histogramData = insightPeriodData.map((period) => {
+    const categories = histogramByMonth.get(period.period) ?? {};
+    return {
+      ...period,
+      ...Object.fromEntries(
+        expenseSeries.map(({ name, dataKey }) => [dataKey, categories[name] ?? 0]),
+      ),
+    };
+  });
   const movingAverageData = insightPeriodData.map((period) => ({
     ...period,
     categories: movingAverageByMonth.get(period.period) ?? {},
@@ -450,29 +485,28 @@ export function CashflowDashboard({
       ? (period.discretionaryExpenses ?? 0) / period.salary
       : null,
   }));
-  const historicalExpenseData = report.periods.map((period) => ({
-    label: formatMonth(period.period),
+  const historicalExpenseData = insightPeriodData.map((period) => ({
+    label: period.label,
     expenses: historicalExpenseCategory
-      ? (period.expenseCategories[historicalExpenseCategory] ?? 0)
+      ? filteredExpenses
+          .filter((expense) => expense.category === historicalExpenseCategory && `${expense.date.slice(0, 7)}-01` === period.period)
+          .reduce((sum, expense) => sum + expense.amount, 0)
       : historicalParentCategory
-        ? (period.categories[historicalParentCategory] ?? 0)
+        ? filteredExpenses
+            .filter((expense) => expense.parentCategory === historicalParentCategory && `${expense.date.slice(0, 7)}-01` === period.period)
+            .reduce((sum, expense) => sum + expense.amount, 0)
         : null,
     salary: showHistoricalSalary ? period.salary : null,
   }));
   const historicalExpenseLabel = historicalExpenseCategory || historicalParentCategory;
-  const cumulativeData = periodData.reduce<
+  const cumulativeData = insightPeriodData.reduce<
     Array<
-      (typeof periodData)[number] & {
+      (typeof insightPeriodData)[number] & {
         cumulativeSalary: number | null;
         cumulativeExpenses: number | null;
       }
     >
   >((data, period) => {
-    if (period.period > cutoff)
-      return [
-        ...data,
-        { ...period, cumulativeSalary: null, cumulativeExpenses: null },
-      ];
     const previous = data.at(-1);
     return [
       ...data,
@@ -507,34 +541,9 @@ export function CashflowDashboard({
   return (
     <div className="space-y-10">
       <section
-        className="border-b border-zinc-300 pb-8"
+        className="border-b border-zinc-300 pb-6"
         aria-labelledby="monthly-cashflow-heading"
       >
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-          <SectionHeading title="Monthly cashflow" />
-          {currentPeriod && (
-            <div className="grid grid-cols-3 gap-5 text-right text-xs tabular-nums">
-              <div>
-                <p className="text-zinc-600">Income</p>
-                <p className="mt-1 font-semibold text-emerald-700">
-                  {formatMoney(currentPeriod.income)}
-                </p>
-              </div>
-              <div>
-                <p className="text-zinc-600">Expenses</p>
-                <p className="mt-1 font-semibold text-red-700">
-                  {formatMoney(currentPeriod.expenses)}
-                </p>
-              </div>
-              <div>
-                <p className="text-zinc-600">Savings rate</p>
-                <p className="mt-1 font-semibold text-black">
-                  {formatPercent(currentPeriod.savingsRate)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
         <div className="h-72 w-full">
           <ResponsiveContainer>
             <LineChart
@@ -582,10 +591,19 @@ export function CashflowDashboard({
               />
               <Line
                 type="monotone"
-                dataKey="chartIncome"
+                dataKey="income"
                 name="INCOME"
                 stroke="#15803d"
                 strokeWidth={3}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="salary"
+                name="SALARY"
+                stroke="#1d4ed8"
+                strokeWidth={2}
                 dot={false}
                 isAnimationActive={false}
               />
@@ -594,14 +612,27 @@ export function CashflowDashboard({
         </div>
       </section>
 
-      <section
-        className="overflow-x-auto border border-zinc-300 bg-white"
-        aria-label="Cashflow summary"
-      >
-        <table className="w-full table-fixed border-collapse text-xs">
+      <section aria-label="Cashflow summary">
+        <div className="mb-3 flex items-center justify-between gap-3">
+
+          <label className="text-sm font-medium text-zinc-700">
+            Year
+            <select
+              className="ml-2 border border-zinc-300 bg-white px-2 py-1"
+              value={selectedSummaryYear}
+              onChange={(event) => setSelectedSummaryYear(event.target.value)}
+            >
+              {summaryYears.map((year) => (
+                <option key={year}>{year}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="overflow-x-auto border border-zinc-300 bg-white">
+          <table className="w-full table-fixed border-collapse text-xs">
           <colgroup>
             <col className="w-[16%]" />
-            {report.periods.map((period) => (
+            {summaryPeriods.map((period) => (
               <col key={period.period} />
             ))}
             <col />
@@ -610,7 +641,7 @@ export function CashflowDashboard({
           <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
             <tr>
               <th className="border border-zinc-300 px-2 py-1">Cashflow</th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <th
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right"
@@ -629,7 +660,7 @@ export function CashflowDashboard({
           <tbody>
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
-                colSpan={report.periods.length + 3}
+                colSpan={summaryPeriods.length + 3}
                 className="border border-zinc-300 px-2 py-1"
               >
                 Income
@@ -643,7 +674,7 @@ export function CashflowDashboard({
                 >
                   {category}
                 </th>
-                {report.periods.map((period) => (
+                {summaryPeriods.map((period) => (
                   <td
                     key={period.period}
                     className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -653,7 +684,7 @@ export function CashflowDashboard({
                 ))}
                 <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
-                    report.periods.reduce(
+                    summaryPeriods.reduce(
                       (total, period) =>
                         total + (period.incomeCategories[category] ?? 0),
                       0,
@@ -663,7 +694,7 @@ export function CashflowDashboard({
                 <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     monthlyAverage(
-                      averagePeriods.map(
+                      summaryAveragePeriods.map(
                         (period) => period.incomeCategories[category],
                       ),
                     ),
@@ -678,7 +709,7 @@ export function CashflowDashboard({
               >
                 Total income
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -687,11 +718,11 @@ export function CashflowDashboard({
                 </td>
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
-                {formatMoney(report.totalIncome)}
+                {formatMoney(summaryTotalIncome)}
               </td>
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
-                  monthlyAverage(averagePeriods.map((period) => period.income)),
+                  monthlyAverage(summaryAveragePeriods.map((period) => period.income)),
                 )}
               </td>
             </tr>
@@ -699,7 +730,7 @@ export function CashflowDashboard({
           <tbody>
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
-                colSpan={report.periods.length + 3}
+                colSpan={summaryPeriods.length + 3}
                 className="border border-zinc-300 px-2 py-1"
               >
                 Expenses
@@ -713,7 +744,7 @@ export function CashflowDashboard({
                 >
                   {category}
                 </th>
-                {report.periods.map((period) => (
+                {summaryPeriods.map((period) => (
                   <td
                     key={period.period}
                     className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -723,7 +754,7 @@ export function CashflowDashboard({
                 ))}
                 <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
-                    report.periods.reduce(
+                    summaryPeriods.reduce(
                       (total, period) =>
                         total + (period.categories[category] ?? 0),
                       0,
@@ -733,7 +764,7 @@ export function CashflowDashboard({
                 <td className="border border-zinc-300 px-2 py-1 text-right font-semibold tabular-nums">
                   {formatMoney(
                     monthlyAverage(
-                      averagePeriods.map(
+                      summaryAveragePeriods.map(
                         (period) => period.categories[category],
                       ),
                     ),
@@ -748,7 +779,7 @@ export function CashflowDashboard({
               >
                 Expense (no rent)
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -758,7 +789,7 @@ export function CashflowDashboard({
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
-                  report.periods.reduce(
+                  summaryPeriods.reduce(
                     (total, period) =>
                       total + (expensesExcluding(period, ["rent"]) ?? 0),
                     0,
@@ -768,7 +799,7 @@ export function CashflowDashboard({
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
-                    averagePeriods.map((period) =>
+                    summaryAveragePeriods.map((period) =>
                       expensesExcluding(period, ["rent"]),
                     ),
                   ),
@@ -782,7 +813,7 @@ export function CashflowDashboard({
               >
                 Expense (no rent and health insurance)
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -794,7 +825,7 @@ export function CashflowDashboard({
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
-                  report.periods.reduce(
+                  summaryPeriods.reduce(
                     (total, period) =>
                       total +
                       (expensesExcluding(period, [
@@ -808,7 +839,7 @@ export function CashflowDashboard({
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
-                    averagePeriods.map((period) =>
+                    summaryAveragePeriods.map((period) =>
                       expensesExcluding(period, ["rent", "health insurance"]),
                     ),
                   ),
@@ -822,7 +853,7 @@ export function CashflowDashboard({
               >
                 Expenses
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -831,12 +862,12 @@ export function CashflowDashboard({
                 </td>
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
-                {formatMoney(report.totalExpenses)}
+                {formatMoney(summaryTotalExpenses)}
               </td>
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
-                    averagePeriods.map((period) => period.expenses),
+                    summaryAveragePeriods.map((period) => period.expenses),
                   ),
                 )}
               </td>
@@ -845,7 +876,7 @@ export function CashflowDashboard({
           <tbody>
             <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
               <th
-                colSpan={report.periods.length + 3}
+                colSpan={summaryPeriods.length + 3}
                 className="border border-zinc-300 px-2 py-1"
               >
                 Savings
@@ -858,7 +889,7 @@ export function CashflowDashboard({
               >
                 Savings
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -867,12 +898,12 @@ export function CashflowDashboard({
                 </td>
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
-                {formatMoney(report.totalSavings)}
+                {formatMoney(summaryTotalSavings)}
               </td>
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatMoney(
                   monthlyAverage(
-                    averagePeriods.map((period) => period.savings),
+                    summaryAveragePeriods.map((period) => period.savings),
                   ),
                 )}
               </td>
@@ -884,7 +915,7 @@ export function CashflowDashboard({
               >
                 Savings rate
               </th>
-              {report.periods.map((period) => (
+              {summaryPeriods.map((period) => (
                 <td
                   key={period.period}
                   className="border border-zinc-300 px-2 py-1 text-right tabular-nums"
@@ -894,97 +925,35 @@ export function CashflowDashboard({
               ))}
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatPercent(
-                  report.totalIncome === 0
+                  summaryTotalIncome === 0
                     ? null
-                    : report.totalSavings / report.totalIncome,
+                    : summaryTotalSavings / summaryTotalIncome,
                 )}
               </td>
               <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                 {formatPercent(
                   averageRate(
-                    averagePeriods.map((period) => period.savingsRate),
+                    summaryAveragePeriods.map((period) => period.savingsRate),
                   ),
                 )}
               </td>
             </tr>
           </tbody>
         </table>
-        {report.unclassifiedExpenses > 0 && (
-          <p className="border-t border-zinc-300 px-3 py-2 text-sm text-zinc-600">
-            Unclassified expenses: {formatMoney(report.unclassifiedExpenses)}{" "}
-            {currency}
-          </p>
-        )}
-      </section>
-
-      <section
-        className="border-b border-zinc-300 pb-8"
-        aria-labelledby="expense-composition-heading"
-      >
-        <SectionHeading title="Expense composition" />
-        <div className="h-80 w-full">
-          <ResponsiveContainer>
-            <AreaChart
-              data={periodData}
-              margin={{ top: 12, right: 18, bottom: 4, left: 0 }}
-            >
-              <CartesianGrid stroke="#d4d4d4" vertical={false} />
-              <XAxis
-                dataKey="label"
-                axisLine={{ stroke: "#171717" }}
-                tickLine={false}
-                tick={{ fill: "#525252", fontSize: 11 }}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: "#525252", fontSize: 11 }}
-                tickFormatter={axisValue}
-                width={54}
-              />
-              <Tooltip
-                content={<ChartTooltip currency={currency} />}
-                cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
-              />
-              <Legend
-                iconType="square"
-                wrapperStyle={{ fontSize: 12, cursor: "pointer" }}
-                onClick={(entry) => {
-                  const category = String(entry.value);
-                  setHiddenCategories((categories) => {
-                    const nextCategories = new Set(categories);
-                    if (nextCategories.has(category))
-                      nextCategories.delete(category);
-                    else nextCategories.add(category);
-                    return nextCategories;
-                  });
-                }}
-              />
-              {report.parentCategories.map((category, index) => (
-                <Area
-                  key={category}
-                  type="monotone"
-                  dataKey={`categories.${category}`}
-                  name={category}
-                  stackId="expenses"
-                  hide={hiddenCategories.has(category)}
-                  stroke={categoryColors[index % categoryColors.length]}
-                  fill={categoryColors[index % categoryColors.length]}
-                  fillOpacity={0.72}
-                  isAnimationActive={false}
-                />
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
+          {report.unclassifiedExpenses > 0 && (
+            <p className="border-t border-zinc-300 px-3 py-2 text-sm text-zinc-600">
+              Unclassified expenses: {formatMoney(report.unclassifiedExpenses)}{" "}
+              {currency}
+            </p>
+          )}
         </div>
       </section>
 
       <section
-        className="space-y-8 border-t border-zinc-300 pt-8"
+        className="space-y-8 pt-0"
         aria-labelledby="expense-insights-heading"
       >
-        <SectionHeading title="Expense insights" />
+        <SectionHeading id="expense-insights-heading"/>
         <div className="border border-zinc-300 bg-zinc-50 p-4">
           <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-7">
             <label className="text-xs font-medium text-zinc-700">
@@ -1239,13 +1208,31 @@ export function CashflowDashboard({
         </div>
 
         <div>
-          <p className="mb-4 text-sm text-zinc-600">
-            Click a category in the legend to hide/show it. Filters are applied
-            before this view.
-          </p>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-zinc-600">
+              Click a category in the legend to hide/show it. Filters are applied
+              before this view.
+            </p>
+            <div className="flex border border-zinc-300" role="group" aria-label="Expense chart grouping">
+              {(["category", "parent"] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={expenseAggregation === level}
+                  onClick={() => {
+                    setExpenseAggregation(level);
+                    setHiddenExpenseCategories(new Set());
+                  }}
+                  className={`px-3 py-1 text-sm font-medium ${expenseAggregation === level ? "bg-black text-white" : "bg-white text-zinc-700"}`}
+                >
+                  {level === "category" ? "Category" : "Parent category"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="h-80 w-full">
             <ResponsiveContainer>
-              <BarChart
+              <AreaChart
                 data={histogramData}
                 margin={{ top: 12, right: 18, bottom: 4, left: 0 }}
               >
@@ -1281,18 +1268,21 @@ export function CashflowDashboard({
                     });
                   }}
                 />
-                {categoryOptions.map((category, index) => (
-                  <Bar
-                    key={category}
-                    dataKey={`categories.${category}`}
-                    name={category}
+                {expenseSeries.map(({ name, dataKey }, index) => (
+                  <Area
+                    key={name}
+                    type="monotone"
+                    dataKey={dataKey}
+                    name={name}
                     stackId="expenses"
-                    hide={hiddenExpenseCategories.has(category)}
+                    hide={hiddenExpenseCategories.has(name)}
+                    stroke={categoryColors[index % categoryColors.length]}
                     fill={categoryColors[index % categoryColors.length]}
+                    fillOpacity={0.72}
                     isAnimationActive={false}
                   />
                 ))}
-              </BarChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -1337,7 +1327,7 @@ export function CashflowDashboard({
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <LineChart
-                data={periodData}
+                data={insightPeriodData}
                 margin={{ top: 12, right: 18, bottom: 4, left: 0 }}
               >
                 <CartesianGrid stroke="#d4d4d4" vertical={false} />
@@ -1381,7 +1371,7 @@ export function CashflowDashboard({
                   Moving average expenses by parent category
                 </h3>
                 <p className="mt-1 text-sm text-zinc-600">
-                  Daily expense average over the selected trailing window.
+                  Daily expense average over the selected moving window.
                 </p>
               </div>
               <label className="text-sm font-medium text-zinc-700">
@@ -1681,7 +1671,7 @@ export function CashflowDashboard({
               }}
             >
               <option value="">Select a category</option>
-              {report.expenseCategories.map((category) => (
+              {categoryOptions.map((category) => (
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>
@@ -1697,7 +1687,7 @@ export function CashflowDashboard({
               }}
             >
               <option value="">Select a parent category</option>
-              {report.parentCategories.map((category) => (
+              {parentOptions.map((category) => (
                 <option key={category} value={category}>{category}</option>
               ))}
             </select>

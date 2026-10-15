@@ -1,4 +1,3 @@
-import { BenchmarkComparison } from "@/components/net-worth/benchmark-comparison";
 import { NetWorthPortfolio } from "@/components/net-worth/net-worth-portfolio";
 import type { BenchmarkInput } from "@/lib/analytics/benchmark";
 import { buildNetWorthReport } from "@/lib/analytics/net-worth";
@@ -79,9 +78,7 @@ export default async function NetWorthPage() {
 
   return (
     <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
-      <NetWorthPortfolio report={report} />
-
-      {benchmarkInputs && <BenchmarkComparison inputs={benchmarkInputs} />}
+      <NetWorthPortfolio report={report} benchmarkInputs={benchmarkInputs} />
     </main>
   );
 }

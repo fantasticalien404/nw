@@ -24,6 +24,8 @@ export type NetWorthReport = {
   rows: NetWorthRow[];
   totals: Array<Array<number | null>>;
   financialTotals: Array<Array<number | null>>;
+  cashTotals: Array<Array<number | null>>;
+  otherTotals: Array<Array<number | null>>;
   absoluteChanges: Array<number | null>;
   percentageChanges: Array<number | null>;
   warnings: string[];
@@ -174,8 +176,9 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
     }),
   );
   const totals = await calculateTotals(rows, workbook.currencies, periods, warnings);
-  const financialRows = rows.filter((row) => row.datatype === "quantity");
-  const financialTotals = await calculateTotals(financialRows, workbook.currencies, periods, warnings);
+  const financialTotals = await calculateTotals(rows.filter((row) => row.datatype === "quantity"), workbook.currencies, periods, warnings);
+  const cashTotals = await calculateTotals(rows.filter((row) => row.datatype === "cash"), workbook.currencies, periods, warnings);
+  const otherTotals = await calculateTotals(rows.filter((row) => row.datatype === "value"), workbook.currencies, periods, warnings);
   const primaryTotals = totals[0] ?? [];
   const absoluteChanges = primaryTotals.map((value, index) => {
     const previous = primaryTotals[index - 1];
@@ -194,6 +197,8 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
     rows,
     totals,
     financialTotals,
+    cashTotals,
+    otherTotals,
     absoluteChanges,
     percentageChanges,
     warnings: [...new Set(warnings)],

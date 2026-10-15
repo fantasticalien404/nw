@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { NetWorthReport, NetWorthRow } from "@/lib/analytics/net-worth";
 
 type NetWorthTableProps = {
@@ -43,7 +44,14 @@ function AssetName({ row }: { row: NetWorthRow }) {
   return row.asset;
 }
 
-function AssetGroup({ label, rows, periods, currency }: { label: string; rows: NetWorthRow[]; periods: string[]; currency: string }) {
+function AssetGroup({ label, rows, periods, periodIndexes, currency, totals }: {
+  label: string;
+  rows: NetWorthRow[];
+  periods: string[];
+  periodIndexes: number[];
+  currency: string;
+  totals: Array<number | null>;
+}) {
   if (rows.length === 0) {
     return null;
   }
@@ -51,9 +59,12 @@ function AssetGroup({ label, rows, periods, currency }: { label: string; rows: N
   return (
     <tbody>
       <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-        <th colSpan={periods.length + 4} className="border border-zinc-300 px-2 py-1">
-          {label}
-        </th>
+        <th colSpan={4} className="border border-zinc-300 px-2 py-1">{label}</th>
+        {periodIndexes.map((periodIndex, index) => (
+          <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
+            {formatMoney(totals[periodIndex] ?? null)}
+          </td>
+        ))}
       </tr>
       {rows.map((row) => {
         const ytdPerformance = row.ytdPerformance[currency] ?? null;
@@ -68,9 +79,9 @@ function AssetGroup({ label, rows, periods, currency }: { label: string; rows: N
             <td className={`border border-zinc-300 px-2 py-1 text-right tabular-nums ${ytdPerformanceColor(ytdPerformance)}`}>
               {formatPercentage(ytdPerformance)}
             </td>
-            {row.values.map((value, index) => (
+            {periodIndexes.map((periodIndex, index) => (
               <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums text-black">
-                {formatMoney(value)}
+                {formatMoney(row.values[periodIndex] ?? null)}
               </td>
             ))}
           </tr>
@@ -80,11 +91,12 @@ function AssetGroup({ label, rows, periods, currency }: { label: string; rows: N
   );
 }
 
-function TotalRow({ label, currency, values, periods, percentage = false }: {
+function TotalRow({ label, currency, values, periods, periodIndexes, percentage = false }: {
   label: string;
   currency: string;
   values: Array<number | null>;
   periods: string[];
+  periodIndexes: number[];
   percentage?: boolean;
 }) {
   return (
@@ -95,9 +107,9 @@ function TotalRow({ label, currency, values, periods, percentage = false }: {
       <td className="border border-zinc-300 px-2 py-1" />
       <td className="border border-zinc-300 px-2 py-1 text-zinc-700">{currency}</td>
       <td className="border border-zinc-300 px-2 py-1" />
-      {values.map((value, periodIndex) => (
-        <td key={periods[periodIndex]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
-          {percentage ? formatPercentage(value) : formatMoney(value)}
+      {periodIndexes.map((periodIndex, index) => (
+        <td key={periods[index]} className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
+          {percentage ? formatPercentage(values[periodIndex] ?? null) : formatMoney(values[periodIndex] ?? null)}
         </td>
       ))}
     </tr>
@@ -105,20 +117,34 @@ function TotalRow({ label, currency, values, periods, percentage = false }: {
 }
 
 export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { currencyIndex: number }) {
+  const years = [...new Set(report.periods.map((period) => period.slice(0, 4)))];
+  const [selectedYear, setSelectedYear] = useState(years.at(-1) ?? "");
+  const periodIndexes = report.periods.flatMap((period, index) => period.startsWith(selectedYear) ? [index] : []);
+  const periods = periodIndexes.map((index) => report.periods[index]);
   const selectedCurrency = report.currencies[currencyIndex] ?? report.currencies[0];
   const financialAssets = report.rows.filter((row) => row.datatype === "quantity");
   const cashAssets = report.rows.filter((row) => row.datatype === "cash");
   const otherAssets = report.rows.filter((row) => row.datatype === "value");
 
   return (
-    <div className="w-full border border-zinc-300 bg-white">
+    <section>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-medium tracking-tight text-black">Asset summary</h2>
+        <label className="text-sm font-medium text-zinc-700">
+          Year
+          <select className="ml-2 border border-zinc-300 bg-white px-2 py-1" value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+            {years.map((year) => <option key={year}>{year}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="w-full overflow-x-auto border border-zinc-300 bg-white">
       <table className="w-full table-fixed border-collapse text-xs">
         <colgroup>
           <col className="w-[22%]" />
           <col className="w-[7%]" />
           <col className="w-[7%]" />
           <col className="w-[7%]" />
-          {report.periods.map((period) => <col key={period} />)}
+          {periods.map((period) => <col key={period} />)}
         </colgroup>
         <thead className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
           <tr>
@@ -126,19 +152,19 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
             <th className="border border-zinc-300 px-2 py-1">Ticker</th>
             <th className="border border-zinc-300 px-2 py-1">Currency</th>
             <th className="border border-zinc-300 px-2 py-1 text-right">YTD %</th>
-            {report.periods.map((period, index) => (
+            {periods.map((period) => (
               <th key={period} className="border border-zinc-300 px-2 py-1 text-right">
-                {index === report.periods.length - 1 ? "Current" : formatDate(period)}
+                {period === report.periods.at(-1) ? "Current" : formatDate(period)}
               </th>
             ))}
           </tr>
         </thead>
-        <AssetGroup label="Financial instruments" rows={financialAssets} periods={report.periods} currency={selectedCurrency} />
-        <AssetGroup label="Cash assets" rows={cashAssets} periods={report.periods} currency={selectedCurrency} />
-        <AssetGroup label="Other assets" rows={otherAssets} periods={report.periods} currency={selectedCurrency} />
+        <AssetGroup label="Financial instruments" rows={financialAssets} periods={periods} periodIndexes={periodIndexes} currency={selectedCurrency} totals={report.financialTotals[currencyIndex] ?? []} />
+        <AssetGroup label="Cash assets" rows={cashAssets} periods={periods} periodIndexes={periodIndexes} currency={selectedCurrency} totals={report.cashTotals[currencyIndex] ?? []} />
+        <AssetGroup label="Other assets" rows={otherAssets} periods={periods} periodIndexes={periodIndexes} currency={selectedCurrency} totals={report.otherTotals[currencyIndex] ?? []} />
         <tbody>
           <tr className="bg-zinc-100 text-left text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-            <th colSpan={report.periods.length + 4} className="border border-zinc-300 px-2 py-1">Net Worth</th>
+            <th colSpan={periods.length + 4} className="border border-zinc-300 px-2 py-1">Net Worth</th>
           </tr>
           {report.totals.map((total, index) => (
             <TotalRow
@@ -146,24 +172,28 @@ export function NetWorthTable({ report, currencyIndex }: NetWorthTableProps & { 
               label="Total"
               currency={report.currencies[index]}
               values={total}
-              periods={report.periods}
+              periods={periods}
+              periodIndexes={periodIndexes}
             />
           ))}
           <TotalRow
             label="Abs. change"
             currency={report.currencies[0]}
             values={report.absoluteChanges}
-            periods={report.periods}
+            periods={periods}
+            periodIndexes={periodIndexes}
           />
           <TotalRow
             label="% change"
             currency={report.currencies[0]}
             values={report.percentageChanges}
-            periods={report.periods}
+            periods={periods}
+            periodIndexes={periodIndexes}
             percentage
           />
         </tbody>
       </table>
-    </div>
+      </div>
+    </section>
   );
 }
