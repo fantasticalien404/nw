@@ -2,6 +2,7 @@
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { NetWorthReport } from "@/lib/analytics/net-worth";
+import { ReportFilters } from "@/components/ui/report-filters";
 
 type NetWorthChartProps = {
   report: NetWorthReport;
@@ -83,37 +84,20 @@ export function NetWorthChart({
   return (
     <section className="mb-8 border-b border-zinc-300 pb-6" aria-label="Net-worth trend">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Display currency">
-          {report.currencies.map((option, index) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onCurrencyChange(index)}
-              aria-pressed={index === currencyIndex}
-              className={`border px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
-                index === currencyIndex
-                  ? "border-black bg-black text-white"
-                  : "border-zinc-300 bg-white text-zinc-700 hover:border-black hover:text-black"
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-        <label className="grid gap-1 text-sm font-medium text-zinc-800">
-          From
-          <input className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black" type="date" min={firstPeriod} max={rangeEnd} value={startDate} onChange={(event) => onStartDateChange(event.target.value)} />
-        </label>
-        <label className="grid gap-1 text-sm font-medium text-zinc-800">
-          To
-          <input className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black" type="date" min={rangeStart} max={maxDate} value={endDate} onChange={(event) => onEndDateChange(event.target.value)} />
-        </label>
-        <button type="button" onClick={() => onRangeSelect("all")} className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black">All time</button>
-        <button type="button" onClick={() => onRangeSelect("ytd")} className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black">YTD</button>
-        <button type="button" onClick={() => onRangeSelect("current-year")} className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black">Current year</button>
-          <button type="button" onClick={() => onRangeSelect("last-year")} className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black">Last year</button>
-        </div>
+        <ReportFilters
+          currencies={report.currencies}
+          selectedCurrency={currency}
+          onCurrencyChange={(selected) => onCurrencyChange(report.currencies.indexOf(selected))}
+          startDate={startDate}
+          endDate={endDate}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          minDate={firstPeriod}
+          maxDate={maxDate}
+          onStartDateChange={onStartDateChange}
+          onEndDateChange={onEndDateChange}
+          onRangeSelect={onRangeSelect}
+        />
         <div className="text-right">
           <p className="text-sm text-zinc-600">Δ since first period</p>
           <p className="text-lg font-semibold tabular-nums text-black">{formatPercent(change)}</p>

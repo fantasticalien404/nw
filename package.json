@@ -10,6 +10,7 @@
     "test:benchmark": "tsx scripts/test-benchmark.ts",
     "test:hall-of-fame": "tsx scripts/test-hall-of-fame.ts",
     "test:market-data": "tsx scripts/test-market-data.ts",
+    "test:net-worth-growth": "tsx scripts/test-net-worth-growth.ts",
     "download:market-data": "tsx scripts/download-market-data.ts",
     "build": "next build",
     "start": "next start",

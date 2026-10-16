@@ -18,6 +18,7 @@ import {
   type CashflowPeriod,
   type CashflowReport,
 } from "@/lib/analytics/cashflow";
+import { ReportFilters, type ReportRange } from "@/components/ui/report-filters";
 
 type CashflowDashboardProps = {
   reports: Record<string, CashflowReport>;
@@ -140,6 +141,20 @@ function previousMonth(reportingDate: string) {
   return date.toISOString().slice(0, 10);
 }
 
+function selectedDays(start: string, end: string, month: string) {
+  if (start > end) return 0;
+  let days = 0;
+  const current = new Date(`${start}T00:00:00Z`);
+  const final = new Date(`${end}T00:00:00Z`);
+
+  while (current <= final) {
+    if (month === "all" || current.toISOString().slice(5, 7) === month) days += 1;
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return days;
+}
+
 function availableReportMonths(report: CashflowReport, reportingDate: string) {
   const currentMonth = reportingDate.slice(0, 7);
   return report.periods.filter((period) =>
@@ -148,39 +163,40 @@ function availableReportMonths(report: CashflowReport, reportingDate: string) {
   );
 }
 
-function reportingYearMonths(report: CashflowReport, cutoff: string) {
-  const year = cutoff.slice(0, 4);
-  const periods = new Map(
-    report.periods.map((period) => [period.period, period]),
-  );
+function emptyPeriod(report: CashflowReport, period: string): CashflowPeriod {
+  return {
+    period,
+    income: null,
+    chartIncome: null,
+    expenses: null,
+    savings: null,
+    savingsRate: null,
+    salary: null,
+    essentialExpenses: null,
+    discretionaryExpenses: null,
+    recurringExpenses: null,
+    nonRecurringExpenses: null,
+    incomeCategories: Object.fromEntries(report.incomeCategories.map((category) => [category, null])),
+    expenseCategories: Object.fromEntries(report.expenseCategories.map((category) => [category, null])),
+    categories: Object.fromEntries(report.parentCategories.map((category) => [category, null])),
+  };
+}
 
-  return Array.from({ length: 12 }, (_, index) => {
-    const period = `${year}-${String(index + 1).padStart(2, "0")}-01`;
-    const source = periods.get(period);
-    const visible = period <= cutoff;
+function rangePeriods(report: CashflowReport, startDate: string, endDate: string) {
+  if (!startDate || !endDate || startDate > endDate) return [];
 
-    return {
-      period,
-      label: formatMonth(period),
-      income: visible ? (source?.income ?? null) : null,
-      chartIncome: visible ? (source?.chartIncome ?? null) : null,
-      expenses: visible ? (source?.expenses ?? null) : null,
-      savingsRate: visible ? (source?.savingsRate ?? null) : null,
-      salary: visible ? (source?.salary ?? null) : null,
-      essentialExpenses: visible ? (source?.essentialExpenses ?? null) : null,
-      discretionaryExpenses: visible
-        ? (source?.discretionaryExpenses ?? null)
-        : null,
-      recurringExpenses: visible ? (source?.recurringExpenses ?? null) : null,
-      nonRecurringExpenses: visible
-        ? (source?.nonRecurringExpenses ?? null)
-        : null,
-      categories: visible ? (source?.categories ?? {}) : {},
-      expenseCategories: visible ? (source?.expenseCategories ?? {}) : {},
-      expensesExcludingRent:
-        visible && source ? expensesExcluding(source, ["rent"]) : null,
-    };
-  });
+  const periods = new Map(report.periods.map((period) => [period.period, period]));
+  const current = new Date(`${startDate.slice(0, 7)}-01T00:00:00Z`);
+  const final = new Date(`${endDate.slice(0, 7)}-01T00:00:00Z`);
+  const result: CashflowPeriod[] = [];
+
+  while (current <= final) {
+    const period = current.toISOString().slice(0, 10);
+    result.push(periods.get(period) ?? emptyPeriod(report, period));
+    current.setUTCMonth(current.getUTCMonth() + 1);
+  }
+
+  return result;
 }
 
 function ChartTooltip({
@@ -328,13 +344,36 @@ export function CashflowDashboard({
   reportingDate,
 }: CashflowDashboardProps) {
   const categoryMenuId = useId();
-  const report = reports[currency];
+  const [displayCurrency, setDisplayCurrency] = useState(currency);
+  const report = reports[displayCurrency];
+  const summaryReport = reports[currency];
   const cutoff = previousMonth(reportingDate);
   const [insightCurrency, setInsightCurrency] = useState(currency);
-  const summaryYears = [...new Set(report.periods.map((period) => period.period.slice(0, 4)))];
+  const summaryYears = [...new Set(summaryReport.periods.map((period) => period.period.slice(0, 4)))];
   const [selectedSummaryYear, setSelectedSummaryYear] = useState(
-    () => summaryYears.at(-1) ?? "",
+    () => summaryYears.at(-1) ?? reportingDate.slice(0, 4),
   );
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const firstPeriod = report.periods[0]?.period ?? reportingDate;
+  const currentYear = reportingDate.slice(0, 4);
+  const rangeStart = startDate || firstPeriod;
+  const rangeEnd = endDate || reportingDate;
+  const selectRange = (range: ReportRange) => {
+    if (range === "all") {
+      setStartDate("");
+      setEndDate("");
+      return;
+    }
+    if (range === "ytd") {
+      setStartDate(`${currentYear}-01-01`);
+      setEndDate(reportingDate);
+      return;
+    }
+    const year = range === "current-year" ? currentYear : String(Number(currentYear) - 1);
+    setStartDate(`${year}-01-01`);
+    setEndDate(`${year}-12-31`);
+  };
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     () => new Set(report.expenseCategories),
   );
@@ -346,8 +385,6 @@ export function CashflowDashboard({
   >(null);
   const [classification, setClassification] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState("all");
-  const [customStart, setCustomStart] = useState("2025-11-01");
-  const [customEnd, setCustomEnd] = useState(reportingDate);
   const [expenseAggregation, setExpenseAggregation] = useState<
     "category" | "parent"
   >("category");
@@ -362,8 +399,9 @@ export function CashflowDashboard({
     () => report.parentCategories.find((category) => category.toLowerCase() === "food") ?? "",
   );
   const [showHistoricalSalary, setShowHistoricalSalary] = useState(false);
-  const summaryPeriods = report.periods.filter((period) =>
-    period.period.startsWith(selectedSummaryYear),
+  const summaryPeriods = useMemo(
+    () => rangePeriods(summaryReport, `${selectedSummaryYear}-01-01`, `${selectedSummaryYear}-12-31`),
+    [summaryReport, selectedSummaryYear],
   );
   const summaryAveragePeriods = summaryPeriods.filter(
     (period) => period.period <= cutoff,
@@ -378,27 +416,35 @@ export function CashflowDashboard({
   );
   const summaryTotalSavings = summaryTotalIncome - summaryTotalExpenses;
   const periodData = useMemo(
-    () => reportingYearMonths(report, cutoff),
-    [report, cutoff],
+    () => rangePeriods(report, rangeStart, rangeEnd).map((period) => {
+      const visible = period.period <= cutoff;
+      return {
+        ...period,
+        label: formatMonth(period.period),
+        income: visible ? period.income : null,
+        chartIncome: visible ? period.chartIncome : null,
+        expenses: visible ? period.expenses : null,
+        salary: visible ? period.salary : null,
+        expensesExcludingRent: visible && period.expenses !== null
+          ? expensesExcluding(period, ["rent"])
+          : null,
+      };
+    }),
+    [report, rangeStart, rangeEnd, cutoff],
   );
   const insightReport = reports[insightCurrency];
   const categoryOptions = insightReport.expenseCategories;
   const parentOptions = insightReport.parentCategories;
-  const reportingEndDate = reportingDate;
-  const insightRangeStart = customStart;
-  const insightRangeEnd = customEnd;
-  const hasValidRange = Boolean(
-    insightRangeStart &&
-    insightRangeEnd &&
-    insightRangeStart <= insightRangeEnd,
-  );
+  const insightRangeStart = rangeStart;
+  const insightRangeEnd = rangeEnd < reportingDate ? rangeEnd : reportingDate;
+  const hasValidRange = insightRangeStart <= insightRangeEnd;
   const filteredExpenses = useMemo(
     () => insightReport.expenseTransactions.filter(
       (expense) =>
-        (selectedMonth !== "all" || hasValidRange) &&
-        (selectedMonth === "all"
-          ? expense.date >= insightRangeStart && expense.date <= insightRangeEnd
-          : expense.date.slice(5, 7) === selectedMonth) &&
+        hasValidRange &&
+        expense.date >= insightRangeStart &&
+        expense.date <= insightRangeEnd &&
+        (selectedMonth === "all" || expense.date.slice(5, 7) === selectedMonth) &&
         (selectedCategories.size === 0 ||
           selectedCategories.has(expense.category)) &&
         (selectedParents.size === 0 ||
@@ -556,23 +602,26 @@ export function CashflowDashboard({
     (sum, expense) => sum + expense.amount,
     0,
   );
-  const daysInSelection =
-    selectedMonth === "all"
-      ? hasValidRange
-        ? Math.floor(
-            (Date.parse(`${insightRangeEnd}T00:00:00Z`) -
-              Date.parse(`${insightRangeStart}T00:00:00Z`)) /
-              86_400_000,
-          ) + 1
-        : 0
-      : new Date(
-          Number(cutoff.slice(0, 4)),
-          Number(selectedMonth),
-          0,
-        ).getDate();
+  const daysInSelection = hasValidRange
+    ? selectedDays(insightRangeStart, insightRangeEnd, selectedMonth)
+    : 0;
 
   return (
     <div className="space-y-10">
+      <ReportFilters
+        currencies={Object.keys(reports)}
+        selectedCurrency={displayCurrency}
+        onCurrencyChange={setDisplayCurrency}
+        startDate={startDate}
+        endDate={endDate}
+        rangeStart={rangeStart}
+        rangeEnd={rangeEnd}
+        minDate={firstPeriod}
+        maxDate={`${currentYear}-12-31`}
+        onStartDateChange={setStartDate}
+        onEndDateChange={setEndDate}
+        onRangeSelect={selectRange}
+      />
       <section
         className="border-b border-zinc-300 pb-6"
         aria-label="Monthly cashflow"
@@ -599,7 +648,7 @@ export function CashflowDashboard({
                 width={54}
               />
               <Tooltip
-                content={<ChartTooltip currency={currency} />}
+                content={<ChartTooltip currency={displayCurrency} />}
                 cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
               />
               <Legend iconType="line" wrapperStyle={{ fontSize: 12 }} />
@@ -647,7 +696,6 @@ export function CashflowDashboard({
 
       <section aria-label="Cashflow summary">
         <div className="mb-3 flex items-center justify-between gap-3">
-
           <label className="text-sm font-medium text-zinc-700">
             Year
             <select
@@ -655,9 +703,7 @@ export function CashflowDashboard({
               value={selectedSummaryYear}
               onChange={(event) => setSelectedSummaryYear(event.target.value)}
             >
-              {summaryYears.map((year) => (
-                <option key={year}>{year}</option>
-              ))}
+              {summaryYears.map((year) => <option key={year}>{year}</option>)}
             </select>
           </label>
         </div>
@@ -699,7 +745,7 @@ export function CashflowDashboard({
                 Income
               </th>
             </tr>
-            {report.incomeCategories.map((category) => (
+            {summaryReport.incomeCategories.map((category) => (
               <tr key={category}>
                 <th
                   scope="row"
@@ -769,7 +815,7 @@ export function CashflowDashboard({
                 Expenses
               </th>
             </tr>
-            {report.parentCategories.map((category) => (
+            {summaryReport.parentCategories.map((category) => (
               <tr key={category}>
                 <th
                   scope="row"
@@ -973,9 +1019,9 @@ export function CashflowDashboard({
             </tr>
           </tbody>
         </table>
-          {report.unclassifiedExpenses > 0 && (
+          {summaryReport.unclassifiedExpenses > 0 && (
             <p className="border-t border-zinc-300 px-3 py-2 text-sm text-zinc-600">
-              Unclassified expenses: {formatMoney(report.unclassifiedExpenses)}{" "}
+              Unclassified expenses: {formatMoney(summaryReport.unclassifiedExpenses)}{" "}
               {currency}
             </p>
           )}
@@ -989,7 +1035,7 @@ export function CashflowDashboard({
         <h2 id="expense-insights-heading" className="mb-5 text-xl font-medium tracking-tight text-black">
           <span className="sr-only">Expense insights</span>
         </h2>
-        <div className="grid items-end gap-3 border border-zinc-300 bg-zinc-50 p-4 sm:grid-cols-2 lg:grid-cols-7">
+        <div className="grid items-end gap-3 border border-zinc-300 bg-zinc-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <label className="text-xs font-medium text-zinc-700">
               Display currency
               <select
@@ -1038,37 +1084,6 @@ export function CashflowDashboard({
                 ))}
               </select>
             </label>
-            <fieldset className="sm:col-span-2 lg:col-span-2" aria-label="Date range">
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                <label className="text-xs text-zinc-600">
-                  From
-                  <input
-                    className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5"
-                    type="date"
-                    max={customEnd || reportingEndDate}
-                    value={customStart}
-                    onChange={(event) => {
-                      setCustomStart(event.target.value);
-                      setSelectedMonth("all");
-                    }}
-                  />
-                </label>
-                <label className="text-xs text-zinc-600">
-                  To
-                  <input
-                    className="mt-1 w-full border border-zinc-300 bg-white px-2 py-1.5"
-                    type="date"
-                    min={customStart}
-                    max={reportingEndDate}
-                    value={customEnd}
-                    onChange={(event) => {
-                      setCustomEnd(event.target.value);
-                      setSelectedMonth("all");
-                    }}
-                  />
-                </label>
-              </div>
-            </fieldset>
             <div className="relative self-end">
               <button
                 type="button"

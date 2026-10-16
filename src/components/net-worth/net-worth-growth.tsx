@@ -97,7 +97,7 @@ export function NetWorthGrowth({
       {showTable && points !== null && (
         <div id="net-worth-growth-summary" className="mt-5">
           <p className="mb-3 text-sm text-zinc-600">
-            Salary is recorded salary income. Total increase is the actual change in net worth; financial-asset increase is net of recorded contributions and withdrawals.
+            Salary is recorded salary income. Total increase is the actual change in net worth. Financial-asset increase is the sum of each instrument’s price change multiplied by prior-period holdings, converted at prior-period FX; trades and currency movements are excluded.
           </p>
           {visiblePoints.length > 0 ? (
             <div className="overflow-x-auto">

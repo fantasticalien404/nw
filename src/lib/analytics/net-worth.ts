@@ -214,20 +214,13 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
   };
 }
 
-function benchmarkContributionDate(date: string) {
-  const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(1);
-  value.setUTCMonth(value.getUTCMonth() + 1);
-  return value.toISOString().slice(0, 10);
-}
-
 export function buildNetWorthGrowthSeries(
   report: NetWorthReport,
   transactions: ConvertedCashflowTransaction[],
+  financialPriceIncreases: Array<Array<number | null>>,
   currencyIndex: number,
 ): NetWorthGrowthPoint[] {
   const totalValues = report.totals[currencyIndex] ?? [];
-  const financialValues = report.financialTotals[currencyIndex] ?? [];
 
   return report.periods.map((period, index) => {
     if (index === 0) {
@@ -243,19 +236,6 @@ export function buildNetWorthGrowthSeries(
     const previousPeriod = report.periods[index - 1];
     const totalNetWorth = totalValues[index] ?? null;
     const previousNetWorth = totalValues[index - 1] ?? null;
-    const financialValue = financialValues[index] ?? null;
-    const previousFinancialValue = financialValues[index - 1] ?? null;
-    const externalFlows = transactions.reduce((total, transaction) => {
-      const flowDate = transaction.type === "contribution"
-        ? benchmarkContributionDate(transaction.date)
-        : transaction.date;
-      if (flowDate <= previousPeriod || flowDate > period) return total;
-      if (transaction.type === "contribution") return total + transaction.amount;
-      if (transaction.type === "income" && transaction.category?.toLowerCase() === "withdrawal") {
-        return total - transaction.amount;
-      }
-      return total;
-    }, 0);
     const salary = transactions.reduce((total, transaction) =>
       transaction.type === "income"
         && transaction.category?.toLowerCase() === "salary"
@@ -267,9 +247,7 @@ export function buildNetWorthGrowthSeries(
     return {
       period,
       totalNetWorth,
-      financialIncrease: financialValue === null || previousFinancialValue === null
-        ? null
-        : financialValue - previousFinancialValue - externalFlows,
+      financialIncrease: financialPriceIncreases[currencyIndex]?.[index] ?? null,
       salary,
       totalIncrease: totalNetWorth === null || previousNetWorth === null
         ? null

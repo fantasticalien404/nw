@@ -22,6 +22,18 @@ function renderReport(report: CashflowReport, reportingDate = "2026-10-15") {
 }
 
 const html = renderReport(report);
+assert.match(html, /aria-label="Report filters"/);
+assert.match(html, /aria-label="Cashflow summary"/);
+assert.match(html, /Year<select[^>]*><option selected="">2026<\/option><\/select>/);
+assert.equal((html.match(/type="date"/g) ?? []).length, 2);
+for (const month of ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Oct", "Nov", "Dec"]) {
+  assert.match(html, new RegExp(`${month}-26`));
+}
+assert.match(html, /Sept-26/);
+assert.match(html, />All time</);
+assert.match(html, />YTD</);
+assert.match(html, />Current year</);
+assert.match(html, />Last year</);
 assert.match(html, /1,125 EUR/);
 assert.match(html, /1,000 EUR/);
 assert.match(html, /food\.delivery/);
@@ -41,7 +53,7 @@ for (const source of [report, buildCashflowReport([], [])]) {
   for (const date of ["2026-01-15", "2026-10-15"]) {
     const result = renderReport(source, date);
     assert.doesNotMatch(result, /NaN|Infinity/);
-    assert.ok(result.includes(`max="${date}" value="${date}"`));
+    assert.ok(result.includes(`max="${date.slice(0, 4)}-12-31" value=""`));
   }
 }
 assert.equal(renderReport(report), html);

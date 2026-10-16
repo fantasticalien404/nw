@@ -4,6 +4,7 @@ import { buildHallOfFame, type HallOfFameMetric } from "@/lib/analytics/hall-of-
 import { buildNetWorthGrowthSeries, buildNetWorthReport, type NetWorthGrowthPoint } from "@/lib/analytics/net-worth";
 import { loadBenchmarkPrices } from "@/lib/market-data/benchmark";
 import { convertCashflowTransactions } from "@/lib/market-data/cashflow";
+import { loadFinancialPriceIncreases } from "@/lib/market-data/net-worth";
 import { loadCashflowWorkbook } from "@/lib/sheets/cashflow";
 import { loadNetWorthWorkbook } from "@/lib/sheets/net-worth";
 import { connection } from "next/server";
@@ -27,6 +28,7 @@ async function loadReport() {
   try {
     const workbook = await loadNetWorthWorkbook();
     const report = await buildNetWorthReport(workbook);
+    const financialPriceIncreases = await loadFinancialPriceIncreases(workbook, report.periods);
     const hallOfFameCurrencies = ["CHF", "EUR"] as const;
     const hallOfFameNetWorthReport = hallOfFameCurrencies.every((currency) => report.currencies.includes(currency))
       ? report
@@ -48,7 +50,7 @@ async function loadReport() {
         convertCashflowTransactions(transactionsThroughToday, currency),
       ));
       growthSeries = convertedTransactions.map((transactions, index) =>
-        buildNetWorthGrowthSeries(report, transactions, index),
+        buildNetWorthGrowthSeries(report, transactions, financialPriceIncreases, index),
       );
       const transactionsByCurrency = Object.fromEntries(await Promise.all(hallOfFameCurrencies.map(async (currency) => {
         const existingIndex = report.currencies.indexOf(currency);
