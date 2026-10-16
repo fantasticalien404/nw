@@ -6,6 +6,7 @@ import {
   getLatestPrice,
   getPrice,
 } from "@/lib/market-data/prices";
+import type { ConvertedCashflowTransaction } from "@/lib/market-data/cashflow";
 import type { AssetRow, NetWorthWorkbook } from "@/lib/sheets/net-worth";
 
 export type NetWorthRow = {
@@ -29,6 +30,14 @@ export type NetWorthReport = {
   absoluteChanges: Array<number | null>;
   percentageChanges: Array<number | null>;
   warnings: string[];
+};
+
+export type NetWorthGrowthPoint = {
+  period: string;
+  totalNetWorth: number | null;
+  financialIncrease: number | null;
+  salary: number | null;
+  totalIncrease: number | null;
 };
 
 function today() {
@@ -203,4 +212,68 @@ export async function buildNetWorthReport(workbook: NetWorthWorkbook): Promise<N
     percentageChanges,
     warnings: [...new Set(warnings)],
   };
+}
+
+function benchmarkContributionDate(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(1);
+  value.setUTCMonth(value.getUTCMonth() + 1);
+  return value.toISOString().slice(0, 10);
+}
+
+export function buildNetWorthGrowthSeries(
+  report: NetWorthReport,
+  transactions: ConvertedCashflowTransaction[],
+  currencyIndex: number,
+): NetWorthGrowthPoint[] {
+  const totalValues = report.totals[currencyIndex] ?? [];
+  const financialValues = report.financialTotals[currencyIndex] ?? [];
+
+  return report.periods.map((period, index) => {
+    if (index === 0) {
+      return {
+        period,
+        totalNetWorth: totalValues[index] ?? null,
+        financialIncrease: null,
+        salary: null,
+        totalIncrease: null,
+      };
+    }
+
+    const previousPeriod = report.periods[index - 1];
+    const totalNetWorth = totalValues[index] ?? null;
+    const previousNetWorth = totalValues[index - 1] ?? null;
+    const financialValue = financialValues[index] ?? null;
+    const previousFinancialValue = financialValues[index - 1] ?? null;
+    const externalFlows = transactions.reduce((total, transaction) => {
+      const flowDate = transaction.type === "contribution"
+        ? benchmarkContributionDate(transaction.date)
+        : transaction.date;
+      if (flowDate <= previousPeriod || flowDate > period) return total;
+      if (transaction.type === "contribution") return total + transaction.amount;
+      if (transaction.type === "income" && transaction.category?.toLowerCase() === "withdrawal") {
+        return total - transaction.amount;
+      }
+      return total;
+    }, 0);
+    const salary = transactions.reduce((total, transaction) =>
+      transaction.type === "income"
+        && transaction.category?.toLowerCase() === "salary"
+        && transaction.date > previousPeriod
+        && transaction.date <= period
+        ? total + transaction.amount
+        : total, 0);
+
+    return {
+      period,
+      totalNetWorth,
+      financialIncrease: financialValue === null || previousFinancialValue === null
+        ? null
+        : financialValue - previousFinancialValue - externalFlows,
+      salary,
+      totalIncrease: totalNetWorth === null || previousNetWorth === null
+        ? null
+        : totalNetWorth - previousNetWorth,
+    };
+  });
 }

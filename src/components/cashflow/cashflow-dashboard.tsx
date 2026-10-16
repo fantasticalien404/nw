@@ -189,6 +189,7 @@ function ChartTooltip({
   label,
   currency,
   showSavingsRate = false,
+  hideZeroValues = false,
 }: {
   active?: boolean;
   payload?: Array<{
@@ -199,12 +200,19 @@ function ChartTooltip({
   label?: string;
   currency: string;
   showSavingsRate?: boolean;
+  hideZeroValues?: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const period = payload[0].payload;
+  const visiblePayload = hideZeroValues
+    ? payload.filter((entry) => entry.value !== 0)
+    : payload;
 
   return (
-    <div className="border border-zinc-900 bg-white px-3 py-2 text-xs shadow-none">
+    <div
+      className="border border-zinc-900 bg-white px-3 py-2 text-xs shadow-none"
+      style={{ backgroundColor: "#fff", opacity: 1 }}
+    >
       <p className="mb-1 font-medium text-zinc-900">{label ?? "—"}</p>
       {showSavingsRate && period ? (
         <>
@@ -216,7 +224,7 @@ function ChartTooltip({
           </p>
         </>
       ) : (
-        payload.map((entry, index) => (
+        visiblePayload.map((entry, index) => (
           <p key={entry.name ?? index} className="text-zinc-700">
             {entry.name}: {formatMoney(entry.value ?? null)} {currency}
           </p>
@@ -1273,8 +1281,14 @@ export function CashflowDashboard({
                   width={54}
                 />
                 <Tooltip
-                  content={<ChartTooltip currency={insightCurrency} />}
+                  content={
+                    <ChartTooltip
+                      currency={insightCurrency}
+                      hideZeroValues
+                    />
+                  }
                   cursor={{ fill: "#f4f4f5" }}
+                  wrapperStyle={{ zIndex: 10 }}
                 />
                 <Legend
                   iconType="square"

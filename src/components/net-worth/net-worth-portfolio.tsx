@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import type { BenchmarkInput } from "@/lib/analytics/benchmark";
-import type { NetWorthReport } from "@/lib/analytics/net-worth";
+import type { HallOfFameMetric } from "@/lib/analytics/hall-of-fame";
+import type { NetWorthGrowthPoint, NetWorthReport } from "@/lib/analytics/net-worth";
 import { BenchmarkComparison } from "./benchmark-comparison";
+import { HallOfFame } from "./hall-of-fame";
+import { NetWorthGrowth } from "./net-worth-growth";
 import { NetWorthChart } from "./net-worth-chart";
 import { NetWorthTable } from "./net-worth-table";
 
@@ -26,9 +29,13 @@ function formatMoney(value: number | null) {
 export function NetWorthPortfolio({
   report,
   benchmarkInputs,
+  growthSeries,
+  hallOfFame,
 }: {
   report: NetWorthReport;
   benchmarkInputs: BenchmarkInput[] | null;
+  growthSeries: NetWorthGrowthPoint[][] | null;
+  hallOfFame: HallOfFameMetric[] | null;
 }) {
   const [currencyIndex, setCurrencyIndex] = useState(0);
   const [startDate, setStartDate] = useState("");
@@ -90,6 +97,13 @@ export function NetWorthPortfolio({
       )}
       <NetWorthTable report={report} currencyIndex={currencyIndex} />
       {benchmarkInputs && <BenchmarkComparison inputs={benchmarkInputs} currencyIndex={currencyIndex} startDate={rangeStart} endDate={rangeEnd} />}
+      <NetWorthGrowth
+        points={growthSeries?.[currencyIndex] ?? null}
+        currency={currency}
+        startDate={rangeStart}
+        endDate={rangeEnd}
+      />
+      <HallOfFame metrics={hallOfFame} />
     </>
   );
 }
