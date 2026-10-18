@@ -2,32 +2,23 @@
 
 import { useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  boxedTooltipStyle,
+  chartMargin,
+  gridProps,
+  lineCursor,
+  xAxisProps,
+  yAxisProps,
+} from "@/components/charts/chart-style";
 import type { NetWorthGrowthPoint } from "@/lib/analytics/net-worth";
+import { formatAxisValue, formatFullDate, formatMoney, formatMonthYear } from "@/lib/format";
 
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" }).format(
-    new Date(`${date}T00:00:00Z`),
-  );
-}
-
-function formatTableDate(date: string) {
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(
-    new Date(`${date}T00:00:00Z`),
-  );
-}
-
-function formatMoney(value: number | null) {
-  return value === null ? "—" : new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatAxisValue(value: number) {
-  const rounded = Math.round(value);
-  const sign = rounded < 0 ? "-" : "";
-  const absolute = Math.abs(rounded);
-  if (absolute >= 1_000_000) return `${sign}${Math.round(absolute / 1_000_000)}m`;
-  if (absolute >= 1_000) return `${sign}${Math.round(absolute / 1_000)}k`;
-  return `${rounded}`;
-}
+const tableRows = [
+  ["Total net worth", "totalNetWorth"],
+  ["Increase due to financial assets", "financialIncrease"],
+  ["Increase due to salary", "salary"],
+  ["Total increase", "totalIncrease"],
+] as const;
 
 export function NetWorthGrowth({
   points,
@@ -72,14 +63,14 @@ export function NetWorthGrowth({
       ) : hasChartData ? (
         <div className="h-80 w-full" aria-label={`Net-worth growth sources in ${currency}`}>
           <ResponsiveContainer>
-            <LineChart data={visiblePoints} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#d4d4d4" vertical={false} />
-              <XAxis dataKey="period" tickFormatter={formatDate} axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis tickFormatter={formatAxisValue} axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} width={54} />
+            <LineChart data={visiblePoints} margin={chartMargin}>
+              <CartesianGrid {...gridProps} />
+              <XAxis dataKey="period" tickFormatter={formatMonthYear} {...xAxisProps} />
+              <YAxis {...yAxisProps} tickFormatter={formatAxisValue} />
               <Tooltip
-                cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
-                contentStyle={{ border: "1px solid #171717", borderRadius: 0, boxShadow: "none" }}
-                labelFormatter={(label) => formatDate(String(label))}
+                cursor={lineCursor}
+                contentStyle={boxedTooltipStyle}
+                labelFormatter={(label) => formatMonthYear(String(label))}
                 formatter={(value, name) => [
                   `${formatMoney(Number(value))} ${currency}`,
                   name === "financialIncrease" ? "Increase from financial assets" : "Salary income",
@@ -107,18 +98,13 @@ export function NetWorthGrowth({
                     <th scope="col" className="border border-zinc-300 px-3 py-2 font-semibold text-black">{currency}</th>
                     {visiblePoints.map((point) => (
                       <th key={point.period} scope="col" className="whitespace-nowrap border border-zinc-300 px-3 py-2 text-right font-semibold text-black">
-                        {formatTableDate(point.period)}
+                        {formatFullDate(point.period)}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {([
-                    ["Total net worth", "totalNetWorth"],
-                    ["Increase due to financial assets", "financialIncrease"],
-                    ["Increase due to salary", "salary"],
-                    ["Total increase", "totalIncrease"],
-                  ] as const).map(([label, key]) => (
+                  {tableRows.map(([label, key]) => (
                     <tr key={key}>
                       <th scope="row" className="whitespace-nowrap border border-zinc-300 px-3 py-2 font-medium text-black">{label}</th>
                       {visiblePoints.map((point) => (

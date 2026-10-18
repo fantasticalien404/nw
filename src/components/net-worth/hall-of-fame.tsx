@@ -1,12 +1,12 @@
 import { Fragment } from "react";
 import type { HallOfFameMetric } from "@/lib/analytics/hall-of-fame";
+import { formatMoney, formatPercent } from "@/lib/format";
+
+const RANKS = 10;
+const METRICS_PER_TABLE = 4;
 
 function formatValue(metric: HallOfFameMetric, value: number | null) {
-  if (value === null) return "—";
-  if (metric.format === "percent") {
-    return new Intl.NumberFormat("en-GB", { style: "percent", maximumFractionDigits: 1 }).format(value);
-  }
-  return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(value);
+  return metric.format === "percent" ? formatPercent(value, { digits: 1 }) : formatMoney(value);
 }
 
 function MetricHeader({ metric }: { metric: HallOfFameMetric }) {
@@ -55,7 +55,7 @@ function RankingTable({ metrics }: { metrics: HallOfFameMetric[] }) {
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: 10 }, (_, rankIndex) => (
+          {Array.from({ length: RANKS }, (_, rankIndex) => (
             <tr key={rankIndex}>
               <th scope="row" className="border border-zinc-300 px-2 py-1 text-center font-medium tabular-nums text-zinc-700">{rankIndex + 1}</th>
               {metrics.map((metric) => {
@@ -106,8 +106,8 @@ export function HallOfFame({ metrics }: { metrics: HallOfFameMetric[] | null }) 
         <p className="border border-zinc-300 px-4 py-3 text-sm text-zinc-700">Rankings are unavailable because cashflow data could not be loaded.</p>
       ) : (
         <div className="space-y-5">
-          {[0, 1, 2].map((rowIndex) => (
-            <RankingTable key={rowIndex} metrics={metrics.slice(rowIndex * 4, rowIndex * 4 + 4)} />
+          {Array.from({ length: Math.ceil(metrics.length / METRICS_PER_TABLE) }, (_, tableIndex) => (
+            <RankingTable key={tableIndex} metrics={metrics.slice(tableIndex * METRICS_PER_TABLE, (tableIndex + 1) * METRICS_PER_TABLE)} />
           ))}
         </div>
       )}

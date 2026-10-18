@@ -1,20 +1,15 @@
 "use client";
 
-export type ReportRange = "all" | "ytd" | "current-year" | "last-year";
+import type { ReportRange, ReportRangeState } from "./use-report-range";
 
 type ReportFiltersProps = {
   currencies: string[];
   selectedCurrency: string;
-  startDate: string;
-  endDate: string;
-  rangeStart: string;
-  rangeEnd: string;
+  onCurrencyChange: (currency: string) => void;
+  range: ReportRangeState;
+  /** Earliest and latest selectable dates. */
   minDate: string;
   maxDate: string;
-  onCurrencyChange: (currency: string) => void;
-  onStartDateChange: (date: string) => void;
-  onEndDateChange: (date: string) => void;
-  onRangeSelect: (range: ReportRange) => void;
 };
 
 const rangeOptions: Array<{ value: ReportRange; label: string }> = [
@@ -24,20 +19,7 @@ const rangeOptions: Array<{ value: ReportRange; label: string }> = [
   { value: "last-year", label: "Last year" },
 ];
 
-export function ReportFilters({
-  currencies,
-  selectedCurrency,
-  startDate,
-  endDate,
-  rangeStart,
-  rangeEnd,
-  minDate,
-  maxDate,
-  onCurrencyChange,
-  onStartDateChange,
-  onEndDateChange,
-  onRangeSelect,
-}: ReportFiltersProps) {
+export function ReportFilters({ currencies, selectedCurrency, onCurrencyChange, range, minDate, maxDate }: ReportFiltersProps) {
   return (
     <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Report filters">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Display currency">
@@ -63,9 +45,9 @@ export function ReportFilters({
           className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black"
           type="date"
           min={minDate}
-          max={rangeEnd}
-          value={startDate}
-          onChange={(event) => onStartDateChange(event.target.value)}
+          max={range.rangeEnd}
+          value={range.startDate}
+          onChange={(event) => range.setStartDate(event.target.value)}
         />
       </label>
       <label className="grid gap-1 text-sm font-medium text-zinc-800">
@@ -73,17 +55,17 @@ export function ReportFilters({
         <input
           className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black"
           type="date"
-          min={rangeStart}
+          min={range.rangeStart}
           max={maxDate}
-          value={endDate}
-          onChange={(event) => onEndDateChange(event.target.value)}
+          value={range.endDate}
+          onChange={(event) => range.setEndDate(event.target.value)}
         />
       </label>
       {rangeOptions.map(({ value, label }) => (
         <button
           key={value}
           type="button"
-          onClick={() => onRangeSelect(value)}
+          onClick={() => range.selectRange(value)}
           className="border border-zinc-300 bg-white px-3 py-1 text-sm font-medium text-zinc-700 hover:border-black hover:text-black"
         >
           {label}

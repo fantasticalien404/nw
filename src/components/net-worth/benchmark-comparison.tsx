@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  boxedTooltipStyle,
+  chartMargin,
+  gridProps,
+  lineCursor,
+  xAxisProps,
+  yAxisProps,
+} from "@/components/charts/chart-style";
 import { buildBenchmarkComparison, type BenchmarkInput, type RebalancePeriod } from "@/lib/analytics/benchmark";
+import { formatAxisValue, formatInteger, formatMonthYear } from "@/lib/format";
 
 const benchmarkNames = {
   balanced: "60 / 40",
@@ -14,18 +23,6 @@ const rebalanceNames: Record<RebalancePeriod, string> = {
   quarterly: "Quarterly",
   yearly: "Yearly",
 };
-
-function formatDate(date: string) {
-  return new Intl.DateTimeFormat("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" }).format(
-    new Date(`${date}T00:00:00Z`),
-  );
-}
-
-function formatAxis(value: number) {
-  if (Math.abs(value) >= 1_000_000) return `${Math.round(value / 1_000_000)}m`;
-  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
-  return `${Math.round(value)}`;
-}
 
 export function BenchmarkComparison({
   inputs,
@@ -50,12 +47,14 @@ export function BenchmarkComparison({
     balanced: buildBenchmarkComparison(input, "balanced", rebalancePeriod),
     stocks: buildBenchmarkComparison(input, "stocks", rebalancePeriod),
   }), [input, rebalancePeriod]);
+  // Both benchmarks share the portfolio's dates, so their points line up by index.
   const points = comparisons.balanced.points.map((point, index) => ({
     ...point,
     balanced: point.benchmark,
     stocks: comparisons.stocks.points[index]?.benchmark ?? null,
   }));
   const hasData = points.some((point) => point.portfolio !== null && (point.balanced !== null || point.stocks !== null));
+  // Each contribution is marked on the first chart date on or after the day it is invested.
   const contributionMarkers = input.cashflows
     .filter((cashflow) => cashflow.amount > 0)
     .flatMap((cashflow) => {
@@ -69,8 +68,7 @@ export function BenchmarkComparison({
         <h2 id="benchmark-heading" className="text-xl font-medium tracking-tight text-black">Benchmark comparison</h2>
         <div className="flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium text-zinc-800">
-            
-            <select value={rebalancePeriod} onChange={(event) => setRebalancePeriod(event.target.value as RebalancePeriod)} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
+            <select aria-label="Rebalancing interval" value={rebalancePeriod} onChange={(event) => setRebalancePeriod(event.target.value as RebalancePeriod)} className="border border-zinc-300 bg-white px-3 py-1 font-normal text-black focus:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black">
               {Object.entries(rebalanceNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
@@ -95,16 +93,16 @@ export function BenchmarkComparison({
       {hasData ? (
         <div className="h-80 w-full" aria-label="Portfolio compared with both benchmarks">
           <ResponsiveContainer>
-            <LineChart data={points} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
-              <CartesianGrid stroke="#d4d4d4" vertical={false} />
-              <XAxis dataKey="date" tickFormatter={formatDate} axisLine={{ stroke: "#171717" }} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis tickFormatter={formatAxis} axisLine={false} tickLine={false} tick={{ fill: "#525252", fontSize: 11 }} width={54} />
+            <LineChart data={points} margin={chartMargin}>
+              <CartesianGrid {...gridProps} />
+              <XAxis dataKey="date" tickFormatter={formatMonthYear} {...xAxisProps} />
+              <YAxis {...yAxisProps} tickFormatter={formatAxisValue} />
               <Tooltip
-                cursor={{ stroke: "#171717", strokeDasharray: "3 3" }}
-                contentStyle={{ border: "1px solid #171717", borderRadius: 0, boxShadow: "none" }}
-                labelFormatter={(date) => formatDate(String(date))}
+                cursor={lineCursor}
+                contentStyle={boxedTooltipStyle}
+                labelFormatter={(date) => formatMonthYear(String(date))}
                 formatter={(value, name) => [
-                  `${new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(Number(value))} ${input.currency}`,
+                  `${formatInteger(Number(value))} ${input.currency}`,
                   name === "portfolio" ? "Portfolio" : benchmarkNames[name as keyof typeof benchmarkNames],
                 ]}
               />
@@ -114,7 +112,7 @@ export function BenchmarkComparison({
                   x={date}
                   stroke="#a3a3a3"
                   strokeDasharray="3 3"
-                  label={{ value: `+${new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(amount)}`, position: "insideTopLeft", fill: "#525252", fontSize: 10 }}
+                  label={{ value: `+${formatInteger(amount)}`, position: "insideTopLeft", fill: "#525252", fontSize: 10 }}
                 />
               ))}
               <Line type="monotone" dataKey="portfolio" name="portfolio" stroke="#171717" strokeWidth={3} dot={false} isAnimationActive={false} />
@@ -138,7 +136,7 @@ export function BenchmarkComparison({
               <p><span className="font-medium text-black">Portfolio:</span> quantity assets only, valued as in the net-worth table. Cash and manually valued assets are excluded.</p>
               <p><span className="font-medium text-black">60 / 40:</span> 60% iShares MSCI ACWI ETF (ACWI) and 40% Vanguard Total Bond Market ETF (BND).</p>
               <p><span className="font-medium text-black">100% stocks:</span> iShares MSCI ACWI ETF (ACWI).</p>
-              <p><span className="font-medium text-black">Cashflows:</span> contributions are invested at the start of the following month; withdrawal income is removed on its transaction date. The dashed vertical lines mark contribution investment dates.</p>
+              <p><span className="font-medium text-black">Cashflows:</span> contributions are invested at the start of the following month; withdrawal income is removed on its transaction date. The dashed vertical lines mark contribution investment dates. Flows after the latest reported holdings are excluded until the next reporting period is filled in.</p>
               <p><span className="font-medium text-black">Currency and rebalancing:</span> both benchmarks use the selected reporting currency and rebalancing interval.</p>
             </div>
           </div>

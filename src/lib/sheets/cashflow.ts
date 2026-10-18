@@ -1,132 +1,112 @@
-import { getSheetsClient } from "@/lib/sheets/client";
+import type { CashflowCategory, CashflowTransaction, CashflowType, CashflowWorkbook } from "@/types/workbook";
+import { readSheetValues, type SheetRows } from "./client";
+import {
+  cellText,
+  hasHeaders,
+  isCurrencyCode,
+  normalizeCurrency,
+  normalizeHeaders,
+  parseConstants,
+  parseSheetDate,
+} from "./parse";
 
-export type CashflowType = "income" | "expense" | "contribution";
+export const CASHFLOW_HEADERS = ["date", "type", "name", "amount", "currency", "category", "subcategory", "notes"];
+export const CATEGORY_HEADERS = ["category", "parent_category", "is_essential", "is_recurring"];
+export const CASHFLOW_TYPES = ["income", "expense", "contribution"];
 
-export type CashflowTransaction = {
-  date: string;
-  type: CashflowType;
-  amount: number;
-  currency: string;
-  category: string | null;
+type CashflowTabs = {
+  cashflowRows: SheetRows;
+  categoryRows: SheetRows;
+  constantRows: SheetRows;
 };
 
-export type CashflowCategory = {
-  category: string;
-  parentCategory: string;
-  isEssential: boolean;
-  isRecurring: boolean;
-};
-
-export type CashflowWorkbook = {
-  transactions: CashflowTransaction[];
-  categories: CashflowCategory[];
-  reportingCurrencies: string[];
-};
-
-function toIsoDate(value: unknown) {
-  const serial = Number(value);
-  if (!Number.isFinite(serial)) {
-    throw new Error("The cashflow tab contains an invalid date.");
-  }
-
-  return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+// Classification flags are the boolean TRUE or blank; FALSE and text are rejected.
+function isFlag(value: unknown) {
+  return value === "" || value === undefined || value === true;
 }
 
-function normalizeCurrency(value: unknown) {
-  const currency = String(value ?? "").trim().toUpperCase();
-  return currency === "DOL" ? "USD" : currency;
-}
-
-export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
-  const { sheetId, sheets } = getSheetsClient();
-  const [cashflowResponse, categoriesResponse, constantsResponse] = await Promise.all([
-    sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: "cashflow!A:H",
-      valueRenderOption: "UNFORMATTED_VALUE",
-    }),
-    sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: "categories!A:D",
-      valueRenderOption: "UNFORMATTED_VALUE",
-    }),
-    sheets.spreadsheets.values.get({
-      spreadsheetId: sheetId,
-      range: "costants!A:B",
-      valueRenderOption: "UNFORMATTED_VALUE",
-    }),
-  ]);
-  const [cashflowHeaders = [], ...cashflowRows] = cashflowResponse.data.values ?? [];
-  const [categoryHeaders = [], ...categoryRows] = categoriesResponse.data.values ?? [];
-  const expectedCashflowHeaders = ["date", "type", "name", "amount", "currency", "category", "subcategory", "notes"];
-  const actualCashflowHeaders = cashflowHeaders.map((value, index) => {
-    const header = String(value).trim().toLowerCase();
-    return index === 6 && header === "city" ? "subcategory" : header;
+function parseCategories(rows: SheetRows) {
+  const names = new Set<string>();
+  return rows.map(([category, parentCategory, isEssential, isRecurring]): CashflowCategory => {
+    const name = cellText(category);
+    const parent = cellText(parentCategory);
+    if (!name || !parent) {
+      throw new Error("The categories tab contains an incomplete category.");
+    }
+    if (names.has(name)) {
+      throw new Error(`The categories tab contains a duplicate category: ${name}.`);
+    }
+    if (!isFlag(isEssential) || !isFlag(isRecurring)) {
+      throw new Error("The categories tab requires boolean TRUE or blank classification values.");
+    }
+    names.add(name);
+    return { category: name, parentCategory: parent, isEssential: isEssential === true, isRecurring: isRecurring === true };
   });
-  const expectedCategoryHeaders = ["category", "parent_category", "is_essential", "is_recurring"];
-  const actualCategoryHeaders = categoryHeaders.map((value) => String(value).trim().toLowerCase());
+}
 
-  if (actualCashflowHeaders.join("|") !== expectedCashflowHeaders.join("|")) {
+function parseTransactions(rows: SheetRows, categoryNames: Set<string>) {
+  return rows.map((row, index): CashflowTransaction => {
+    const [rawDate, rawType, , rawAmount, rawCurrency, rawCategory] = row;
+    const rowNumber = index + 2;
+    const type = cellText(rawType).toLowerCase();
+    const amount = Number(rawAmount);
+    const currency = normalizeCurrency(rawCurrency);
+    const category = cellText(rawCategory) || null;
+
+    if (!CASHFLOW_TYPES.includes(type)) {
+      throw new Error(`The cashflow tab contains an invalid type on row ${rowNumber}.`);
+    }
+    if (!Number.isFinite(amount) || amount < 0 || !isCurrencyCode(currency)) {
+      throw new Error(`The cashflow tab contains an invalid transaction on row ${rowNumber}.`);
+    }
+    if (category && !categoryNames.has(category)) {
+      throw new Error(`The cashflow tab contains an unknown category on row ${rowNumber}: ${category}.`);
+    }
+
+    return {
+      date: parseSheetDate(rawDate, "The cashflow tab contains an invalid date."),
+      type: type as CashflowType,
+      amount,
+      currency,
+      category,
+    };
+  });
+}
+
+/** Reporting currencies are `CURRENCY_1..3` from `costants`: valid codes only, unique, in order. */
+function parseReportingCurrencies(constantRows: SheetRows) {
+  const constants = parseConstants(constantRows);
+  const currencies = ["CURRENCY_1", "CURRENCY_2", "CURRENCY_3"]
+    .map((key) => constants.get(key))
+    .filter((currency): currency is string => currency !== undefined && isCurrencyCode(currency));
+  if (currencies.length === 0) {
+    throw new Error("Set CURRENCY_1 in the costants tab.");
+  }
+  return [...new Set(currencies)];
+}
+
+/** Validates and normalises the raw `cashflow`, `categories` and `costants` tabs. */
+export function parseCashflowWorkbook({ cashflowRows, categoryRows, constantRows }: CashflowTabs): CashflowWorkbook {
+  const [cashflowHeaders = [], ...transactionRows] = cashflowRows;
+  const [categoryHeaders = [], ...categoryDataRows] = categoryRows;
+  // `CITY` is the legacy name of the seventh column.
+  const actualCashflowHeaders = normalizeHeaders(cashflowHeaders).map((header, index) =>
+    index === 6 && header === "city" ? "subcategory" : header,
+  );
+
+  if (!hasHeaders(actualCashflowHeaders, CASHFLOW_HEADERS)) {
     throw new Error("The cashflow tab has invalid headers.");
   }
-  if (actualCategoryHeaders.join("|") !== expectedCategoryHeaders.join("|")) {
+  if (!hasHeaders(normalizeHeaders(categoryHeaders), CATEGORY_HEADERS)) {
     throw new Error("The categories tab has invalid headers.");
   }
 
-  const categories: CashflowCategory[] = [];
-  const categoryByName = new Map<string, CashflowCategory>();
-  for (const [category, parentCategory, isEssential, isRecurring] of categoryRows) {
-    const key = String(category ?? "").trim();
-    const parent = String(parentCategory ?? "").trim();
-    if (!key || !parent) {
-      throw new Error("The categories tab contains an incomplete category.");
-    }
-    if (categoryByName.has(key)) {
-      throw new Error(`The categories tab contains a duplicate category: ${key}.`);
-    }
-    if (!["", undefined, true].includes(isEssential) || !["", undefined, true].includes(isRecurring)) {
-      throw new Error("The categories tab requires boolean TRUE or blank classification values.");
-    }
-    const definition = {
-      category: key,
-      parentCategory: parent,
-      isEssential: isEssential === true,
-      isRecurring: isRecurring === true,
-    };
-    categoryByName.set(key, definition);
-    categories.push(definition);
-  }
+  const categories = parseCategories(categoryDataRows);
+  const transactions = parseTransactions(transactionRows, new Set(categories.map(({ category }) => category)));
+  return { transactions, categories, reportingCurrencies: parseReportingCurrencies(constantRows) };
+}
 
-  const transactions = cashflowRows.map((row, index) => {
-    const [rawDate, rawType, , rawAmount, rawCurrency, rawCategory] = row;
-    const type = String(rawType ?? "").trim().toLowerCase();
-    const amount = Number(rawAmount);
-    const currency = normalizeCurrency(rawCurrency);
-    const category = String(rawCategory ?? "").trim() || null;
-
-    if (!(["income", "expense", "contribution"] as string[]).includes(type)) {
-      throw new Error(`The cashflow tab contains an invalid type on row ${index + 2}.`);
-    }
-    if (!Number.isFinite(amount) || amount < 0 || !/^[A-Z]{3}$/.test(currency)) {
-      throw new Error(`The cashflow tab contains an invalid transaction on row ${index + 2}.`);
-    }
-    if (category && !categoryByName.has(category)) {
-      throw new Error(`The cashflow tab contains an unknown category on row ${index + 2}: ${category}.`);
-    }
-
-    return { date: toIsoDate(rawDate), type: type as CashflowType, amount, currency, category };
-  });
-
-  const constants = new Map(
-    (constantsResponse.data.values ?? []).map(([key, value]) => [String(key).trim().toUpperCase(), normalizeCurrency(value)]),
-  );
-  const reportingCurrencies = ["CURRENCY_1", "CURRENCY_2", "CURRENCY_3"].flatMap((key) => {
-    const currency = constants.get(key);
-    return currency && /^[A-Z]{3}$/.test(currency) ? [currency] : [];
-  }).filter((currency, index, values) => values.indexOf(currency) === index);
-  if (reportingCurrencies.length === 0) {
-    throw new Error("Set CURRENCY_1 in the costants tab.");
-  }
-
-  return { transactions, categories, reportingCurrencies };
+export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
+  const [cashflowRows, categoryRows, constantRows] = await readSheetValues("cashflow!A:H", "categories!A:D", "costants!A:B");
+  return parseCashflowWorkbook({ cashflowRows, categoryRows, constantRows });
 }

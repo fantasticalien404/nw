@@ -20,12 +20,12 @@ Google Sheets (read-only from the app)
   ├── cashflow, categories, costants
   │       ↓ Sheets parsers + historical FX conversion
   │       ↓ pure cashflow analytics
-  │       └── /cashflow server page → Recharts dashboard
+  │       └── / (cashflow) server page → Recharts dashboard
   │
   └── assets, metadata, costants
           ↓ Sheets parsers + local historical/current prices and FX
           ↓ pure net-worth and benchmark analytics
-          └── /nw server page → trend, table, and benchmark comparison
+          └── /networth server page → trend, table, benchmark comparison, and rankings
 ```
 
 The application is a Next.js App Router project. Route pages are server components: they load and validate workbook data, read local market-data files, build serializable reports, and pass those reports to small client chart components. React components never call Google Sheets or external market-data providers directly.
@@ -34,19 +34,22 @@ The application is a Next.js App Router project. Route pages are server componen
 
 | Route | Server workflow | UI |
 | --- | --- | --- |
-| `/nw` | Parse `assets`, `metadata`, `costants`, and `cashflow`; price holdings and benchmark instruments from local market-data files; convert historical/current values and cashflows into each reporting currency | Net-worth trend, instrument/cash/other-assets table, totals, period changes, and selectable benchmark comparison |
-| `/cashflow` | Parse `cashflow`, `categories`, and `costants`; convert transactions into `CURRENCY_1` using local historical FX; aggregate in pure analytics | Income/expense trend, annual income and spending tables, category area chart, savings rate, and cumulative cashflow |
+| `/networth` | Parse `assets`, `metadata`, `costants`, and `cashflow`; price holdings and benchmark instruments from local market-data files; convert historical/current values and cashflows into each reporting currency | Net-worth trend, instrument/cash/other-assets table, totals, period changes, and selectable benchmark comparison |
+| `/` (`/cashflow` redirects here) | Parse `cashflow`, `categories`, and `costants`; convert transactions into `CURRENCY_1` using local historical FX; aggregate in pure analytics | Income/expense trend, annual income and spending tables, category area chart, savings rate, and cumulative cashflow |
 
 ### Module boundaries
 
-- `src/lib/sheets`: Google Sheets I/O, workbook header validation, parsing, and normalization.
-- `src/lib/market-data`: local historical/current price and FX lookup.
+- `src/lib/sheets`: Google Sheets I/O (`client.ts`), pure tab parsers and normalization (`cashflow.ts`, `net-worth.ts`, `parse.ts`), and the contract checks behind `npm run test:sheets` (`validate.ts`).
+- `src/lib/market-data`: local historical/current price and FX lookup. `createMarketData()` reads each symbol's file once per request; `net-worth.ts` and `cashflow.ts` convert workbook data into valued, single-currency inputs for analytics.
 - `data/market-data`: one downloaded JSON file per ticker or FX pair.
 - `scripts/download-market-data.ts`: refreshes the local price store from Yahoo Finance.
-- `src/lib/analytics`: deterministic calculations only; no external I/O.
-- `src/app`: server pages that compose loaders, market-data conversion, analytics, and views.
-- `src/components`: presentational tables and client-side Recharts visualizations.
-- `scripts/test-google-sheets.ts`: executable workbook-contract validation.
+- `src/lib/analytics`: deterministic calculations only; no external I/O. `cashflow-insights.ts` holds the calculations behind the cashflow filters.
+- `src/lib/dates.ts`, `src/lib/format.ts`: shared UTC date helpers and display formatting.
+- `src/types`: domain types shared by the layers above.
+- `src/app`: thin server pages; each route's loader (`load-*-page.ts`) composes workbook loaders, market-data conversion, and analytics.
+- `src/components`: presentational tables and client-side Recharts visualizations; `charts/chart-style.ts` holds the shared chart styling.
+- `scripts/test-google-sheets.ts`: executable workbook-contract validation against the live workbook.
+- `tests`: the `node:test` suite (`npm test`), which uses synthetic data only.
 
 ## Market-data workflow
 
@@ -88,7 +91,7 @@ Use `contribution` when money enters the invested portfolio from outside it. Rec
 
 Record money leaving the invested portfolio as an `income` transaction with the `withdrawal` category. The performance calculation treats this category as an external portfolio withdrawal, while income reporting includes it as income. Purchases, sales, dividends, fees, and taxes remain internal to the investment platform and are not recorded in `cashflow`.
 
-The `/nw` benchmark comparison invests every `contribution` in the benchmark at the start of the following month and treats every `withdrawal` as an outflow on its transaction date. It uses financial instruments only (quantity assets); cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments, so distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals; refresh market data and review data-quality warnings before relying on the comparison. Scheduled benchmark contributions are marked on the comparison chart.
+The `/networth` benchmark comparison invests every `contribution` in the benchmark at the start of the following month and treats every `withdrawal` as an outflow on its transaction date. It uses financial instruments only (quantity assets); cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments, so distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals; refresh market data and review data-quality warnings before relying on the comparison. Scheduled benchmark contributions are marked on the comparison chart.
 
 #### Dashboard workflow
 
@@ -98,11 +101,11 @@ The `/nw` benchmark comparison invests every `contribution` in the benchmark at 
 4. Income and expenses are aggregated monthly. Expense category aggregation uses `CATEGORY → PARENT_CATEGORY`; blank categories remain unclassified rather than being guessed.
 5. Savings are $income - expenses$ and the monthly savings rate is $savings / income$ when income is non-zero.
 
-The server supplies the dashboard's UTC reporting date so the initial render and hydration share the same date boundaries. Expense filtering and moving-window calculations are memoized independently of legend and menu state. Run `npm run test:cashflow-ui` for synthetic render regression checks (including empty reports); this does not access Sheets or market-data files.
+The server supplies the dashboard's UTC reporting date so the initial render and hydration share the same date boundaries. Expense filtering and moving-window calculations are memoized independently of legend and menu state. `npm test` renders the dashboard from synthetic reports, including empty ones; it does not access Sheets or market-data files.
 
 ## Benchmark comparison
 
-The `/nw` page compares the financial-instruments portfolio—`quantity` rows only—with either a **60/40** benchmark (60% ACWI, 40% BND) or **100% stocks** (ACWI). Cash and manually valued assets are excluded from both the portfolio series and the comparison. Benchmark prices use dividend-adjusted closes, are converted daily into the selected reporting currency, and are rebalanced monthly by default; quarterly and yearly rebalancing are also available.
+The `/networth` page compares the financial-instruments portfolio—`quantity` rows only—with either a **60/40** benchmark (60% ACWI, 40% BND) or **100% stocks** (ACWI). Cash and manually valued assets are excluded from both the portfolio series and the comparison. Benchmark prices use dividend-adjusted closes, are converted daily into the selected reporting currency, and are rebalanced monthly by default; quarterly and yearly rebalancing are also available.
 
 ### Cash-flow treatment
 
@@ -261,6 +264,14 @@ Centralizes configuration and avoids hardcoded application parameters.
 6. Keep Sheets and downloader I/O separate from analytics and rendering.
 7. Validate code changes with linting and TypeScript before release.
 
+## Tests
+
+```bash
+npm test
+```
+
+Runs the `node:test` suite in `tests/` through `tsx`. It needs no environment variables and never touches Google Sheets, the real `data/market-data` files, or the network: tab parsers take plain arrays, market-data tests use a temporary directory and a stubbed `fetch`, and the dashboards are rendered from synthetic reports. Add a test whenever you change a parser, an analytics function, or the market-data layer.
+
 ## Workbook Validation
 
 Run the Google Sheets validation after changing workbook data:
@@ -269,7 +280,7 @@ Run the Google Sheets validation after changing workbook data:
 npm run test:sheets
 ```
 
-The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. The current service account needs spreadsheet **Viewer** access because the product is read-only. It validates all six tabs:
+The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. The current service account needs spreadsheet **Viewer** access because the product is read-only. It validates all six tabs, then runs the app's own parsers on the same rows so the check cannot pass while a page would fail:
 
 - `cashflow`: required column names (case-insensitive); required values; allowed types; non-negative numeric amounts; three-letter uppercase currency codes; non-empty categories must exist in `categories`.
 - `assets`: required columns; ascending Google Sheets reporting-period dates; allowed datatypes; non-negative values.

@@ -1,7 +1,10 @@
-import type { ConvertedCashflowTransaction } from "@/lib/market-data/cashflow";
+import { monthStarts } from "@/lib/dates";
+import type { ConvertedCashflowTransaction } from "@/types/workbook";
+import { isSalary } from "./cashflow";
 import type { NetWorthReport } from "./net-worth";
 
-type Currency = "CHF" | "EUR";
+const CURRENCIES = ["CHF", "EUR"] as const;
+type Currency = (typeof CURRENCIES)[number];
 type MetricValue = number | null;
 
 type HallOfFameEntry = {
@@ -22,15 +25,12 @@ export type HallOfFameMetric = {
 };
 
 type MonthlyValues = {
-  incomeCHF: number;
-  incomeEUR: number;
-  salaryCHF: number;
-  salaryEUR: number;
+  income: Record<Currency, number>;
+  salary: Record<Currency, number>;
   expensesCHF: number;
   savingsCHF: number;
   savingsRate: number | null;
-  netWorthDeltaCHF: number | null;
-  netWorthDeltaEUR: number | null;
+  netWorthDelta: Record<Currency, number | null>;
 };
 
 const metricDefinitions = [
@@ -40,7 +40,7 @@ const metricDefinitions = [
     description: "Months with the highest recorded income, including investment withdrawals and excluding portfolio contributions.",
     calculation: "Sum of income transactions in CHF for the month.",
     format: "money",
-    value: (month: MonthlyValues) => month.incomeCHF,
+    value: (month: MonthlyValues) => month.income.CHF,
     direction: "desc",
   },
   {
@@ -49,7 +49,7 @@ const metricDefinitions = [
     description: "Months with the highest recorded income, including investment withdrawals and excluding portfolio contributions.",
     calculation: "Sum of income transactions converted to EUR at each transaction's historical FX rate.",
     format: "money",
-    value: (month: MonthlyValues) => month.incomeEUR,
+    value: (month: MonthlyValues) => month.income.EUR,
     direction: "desc",
   },
   {
@@ -58,7 +58,7 @@ const metricDefinitions = [
     description: "Months with the highest recorded salary income.",
     calculation: "Sum of income transactions categorized as salary, converted to CHF at each transaction's historical FX rate.",
     format: "money",
-    value: (month: MonthlyValues) => month.salaryCHF,
+    value: (month: MonthlyValues) => month.salary.CHF,
     direction: "desc",
   },
   {
@@ -67,7 +67,7 @@ const metricDefinitions = [
     description: "Months with the highest recorded salary income.",
     calculation: "Sum of income transactions categorized as salary, converted to EUR at each transaction's historical FX rate.",
     format: "money",
-    value: (month: MonthlyValues) => month.salaryEUR,
+    value: (month: MonthlyValues) => month.salary.EUR,
     direction: "desc",
   },
   {
@@ -76,7 +76,7 @@ const metricDefinitions = [
     description: "Months with the largest increase in total net worth.",
     calculation: "Total net worth in CHF minus the previous reported month's total.",
     format: "money",
-    value: (month: MonthlyValues) => month.netWorthDeltaCHF,
+    value: (month: MonthlyValues) => month.netWorthDelta.CHF,
     direction: "desc",
   },
   {
@@ -85,7 +85,7 @@ const metricDefinitions = [
     description: "Months with the largest increase in total net worth.",
     calculation: "Total net worth in EUR minus the previous reported month's total.",
     format: "money",
-    value: (month: MonthlyValues) => month.netWorthDeltaEUR,
+    value: (month: MonthlyValues) => month.netWorthDelta.EUR,
     direction: "desc",
   },
   {
@@ -94,7 +94,7 @@ const metricDefinitions = [
     description: "Months with the largest decrease in total net worth.",
     calculation: "Total net worth in CHF minus the previous reported month's total; lowest values rank first.",
     format: "money",
-    value: (month: MonthlyValues) => month.netWorthDeltaCHF,
+    value: (month: MonthlyValues) => month.netWorthDelta.CHF,
     direction: "asc",
   },
   {
@@ -103,7 +103,7 @@ const metricDefinitions = [
     description: "Months with the largest decrease in total net worth.",
     calculation: "Total net worth in EUR minus the previous reported month's total; lowest values rank first.",
     format: "money",
-    value: (month: MonthlyValues) => month.netWorthDeltaEUR,
+    value: (month: MonthlyValues) => month.netWorthDelta.EUR,
     direction: "asc",
   },
   {
@@ -148,30 +148,14 @@ function monthOf(date: string) {
   return date.slice(0, 7);
 }
 
-function monthsBetween(start: string, end: string) {
-  const months: string[] = [];
-  const current = new Date(`${start}-01T00:00:00Z`);
-  const final = new Date(`${end}-01T00:00:00Z`);
-
-  while (current <= final) {
-    months.push(current.toISOString().slice(0, 7));
-    current.setUTCMonth(current.getUTCMonth() + 1);
-  }
-
-  return months;
-}
-
 function emptyMonth(): MonthlyValues {
   return {
-    incomeCHF: 0,
-    incomeEUR: 0,
-    salaryCHF: 0,
-    salaryEUR: 0,
+    income: { CHF: 0, EUR: 0 },
+    salary: { CHF: 0, EUR: 0 },
     expensesCHF: 0,
     savingsCHF: 0,
     savingsRate: null,
-    netWorthDeltaCHF: null,
-    netWorthDeltaEUR: null,
+    netWorthDelta: { CHF: null, EUR: null },
   };
 }
 
@@ -180,6 +164,10 @@ function totalsFor(report: NetWorthReport, currency: Currency) {
   return index < 0 ? [] : report.totals[index] ?? [];
 }
 
+/**
+ * Top-ten monthly rankings of income, salary, expenses, savings and net-worth change, plus the current month's value.
+ * Transactions must already be converted to each currency at their own historical FX rate.
+ */
 export function buildHallOfFame(
   report: NetWorthReport,
   transactionsByCurrency: Record<Currency, ConvertedCashflowTransaction[]>,
@@ -188,51 +176,48 @@ export function buildHallOfFame(
   const currentMonth = monthOf(currentDate);
   const dates = [...report.periods, ...transactionsByCurrency.CHF.map((item) => item.date)];
   const firstMonth = dates.map(monthOf).sort()[0] ?? currentMonth;
-  const months = monthsBetween(firstMonth, currentMonth);
+  const months = monthStarts(`${firstMonth}-01`, `${currentMonth}-01`).map(monthOf);
   const values = new Map(months.map((month) => [month, emptyMonth()]));
 
-  for (const currency of ["CHF", "EUR"] as const) {
+  for (const currency of CURRENCIES) {
     for (const transaction of transactionsByCurrency[currency]) {
       const month = values.get(monthOf(transaction.date));
       if (!month) continue;
 
       if (transaction.type === "income") {
-        month[currency === "CHF" ? "incomeCHF" : "incomeEUR"] += transaction.amount;
-        if (transaction.category?.toLowerCase() === "salary") {
-          month[currency === "CHF" ? "salaryCHF" : "salaryEUR"] += transaction.amount;
-        }
+        month.income[currency] += transaction.amount;
+        if (isSalary(transaction)) month.salary[currency] += transaction.amount;
       } else if (transaction.type === "expense" && currency === "CHF") {
         month.expensesCHF += transaction.amount;
       }
     }
   }
 
-  const chfTotals = totalsFor(report, "CHF");
-  const eurTotals = totalsFor(report, "EUR");
-  const reportingMonthTotals = new Map<string, { chf: number | null; eur: number | null }>();
+  // Net-worth change compares consecutive reported months; the latest reading of a month wins.
+  const totalsByCurrency = Object.fromEntries(CURRENCIES.map((currency) => [currency, totalsFor(report, currency)])) as Record<Currency, Array<number | null>>;
+  const reportedMonths = new Map<string, Record<Currency, number | null>>();
   report.periods.forEach((period, index) => {
-    reportingMonthTotals.set(monthOf(period), {
-      chf: chfTotals[index] ?? null,
-      eur: eurTotals[index] ?? null,
+    reportedMonths.set(monthOf(period), {
+      CHF: totalsByCurrency.CHF[index] ?? null,
+      EUR: totalsByCurrency.EUR[index] ?? null,
     });
   });
-  const reportedMonths = [...reportingMonthTotals.entries()];
-  for (let index = 1; index < reportedMonths.length; index += 1) {
-    const [monthName, currentTotals] = reportedMonths[index];
+  const reported = [...reportedMonths.entries()];
+  for (let index = 1; index < reported.length; index += 1) {
+    const [monthName, currentTotals] = reported[index];
     const month = values.get(monthName);
     if (!month) continue;
-    const previousTotals = reportedMonths[index - 1][1];
-    month.netWorthDeltaCHF = previousTotals.chf === null || currentTotals.chf === null
-      ? null
-      : currentTotals.chf - previousTotals.chf;
-    month.netWorthDeltaEUR = previousTotals.eur === null || currentTotals.eur === null
-      ? null
-      : currentTotals.eur - previousTotals.eur;
+    const previousTotals = reported[index - 1][1];
+    for (const currency of CURRENCIES) {
+      month.netWorthDelta[currency] = previousTotals[currency] === null || currentTotals[currency] === null
+        ? null
+        : currentTotals[currency]! - previousTotals[currency]!;
+    }
   }
 
   for (const month of values.values()) {
-    month.savingsCHF = month.incomeCHF - month.expensesCHF;
-    month.savingsRate = month.incomeCHF === 0 ? null : month.savingsCHF / month.incomeCHF;
+    month.savingsCHF = month.income.CHF - month.expensesCHF;
+    month.savingsRate = month.income.CHF === 0 ? null : month.savingsCHF / month.income.CHF;
   }
 
   return metricDefinitions.map((definition) => {
@@ -246,7 +231,6 @@ export function buildHallOfFame(
         return difference || left.month.localeCompare(right.month);
       })
       .slice(0, 10);
-    const currentValue = definition.value(values.get(currentMonth) ?? emptyMonth());
 
     return {
       id: definition.id,
@@ -256,7 +240,7 @@ export function buildHallOfFame(
       format: definition.format,
       topTen: ranked,
       currentMonth,
-      currentValue,
+      currentValue: definition.value(values.get(currentMonth) ?? emptyMonth()),
       currentIsRanked: ranked.some((entry) => entry.month === currentMonth),
     };
   });

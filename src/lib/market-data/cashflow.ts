@@ -1,28 +1,16 @@
-import { getFxRate } from "@/lib/market-data/prices";
-import type { CashflowTransaction } from "@/lib/sheets/cashflow";
+import type { CashflowTransaction, ConvertedCashflowTransaction } from "@/types/workbook";
+import type { MarketData } from "./prices";
 
-export type ConvertedCashflowTransaction = Omit<CashflowTransaction, "amount" | "currency"> & {
-  amount: number;
-};
-
+/** Converts every transaction to `targetCurrency` at the historical FX rate of its own date. */
 export async function convertCashflowTransactions(
+  market: MarketData,
   transactions: CashflowTransaction[],
   targetCurrency: string,
 ): Promise<ConvertedCashflowTransaction[]> {
-  const rates = new Map<string, Promise<number>>();
-
   return Promise.all(
-    transactions.map(async (transaction) => {
-      const { currency, ...converted } = transaction;
-      if (currency === targetCurrency) {
-        return converted;
-      }
-
-      const key = `${currency}:${transaction.date}`;
-      const rate = rates.get(key) ?? getFxRate(currency, targetCurrency, transaction.date);
-      rates.set(key, rate);
-
-      return { ...converted, amount: transaction.amount * await rate };
+    transactions.map(async ({ currency, ...transaction }) => {
+      if (currency === targetCurrency) return transaction;
+      return { ...transaction, amount: transaction.amount * await market.fxRate(currency, targetCurrency, transaction.date) };
     }),
   );
 }

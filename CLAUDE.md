@@ -53,7 +53,7 @@ The first four headers are `ASSET`, `DATATYPE`, `CURRENCY`, `ACCOUNT`; remaining
 
 ### `categories`
 
-Headers: `CATEGORY`, `PARENT_CATEGORY`. `CATEGORY` values are unique and are the only valid non-empty expense categories in `cashflow`.
+Headers: `CATEGORY`, `PARENT_CATEGORY`, `IS_ESSENTIAL`, `IS_RECURRING`. `IS_ESSENTIAL` and `IS_RECURRING` are `TRUE` or blank. `CATEGORY` values are unique and are the only valid non-empty expense categories in `cashflow`.
 
 ### `metadata`
 
@@ -85,8 +85,8 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 
 ### Implemented routes
 
-- `/nw`: parses `assets`, `metadata`, and `costants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and full reporting-period table.
-- `/cashflow`: parses `cashflow`, `categories`, and `costants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
+- `/networth`: parses `assets`, `metadata`, and `costants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and full reporting-period table.
+- `/` (`/cashflow` redirects to it): parses `cashflow`, `categories`, and `costants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
 
 ### Calculation rules
 
@@ -104,7 +104,7 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 - Recharts for all interactive charts.
 - `googleapis` for the service-account Google Sheets client.
 - Yahoo Finance chart endpoint through the explicit downloader script; the application consumes only the downloaded JSON price store.
-- `tsx` for workbook validation and ESLint for static checks.
+- `tsx` for the test runner and workbook validation, and ESLint for static checks.
 
 ### Required workflow
 
@@ -112,7 +112,7 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 2. Run `npm run download:market-data` after workbook changes and before running or deploying the application. It stores raw and dividend-adjusted daily prices, including required FX pairs, in `data/market-data`.
 3. Run `npm run test:sheets` after any workbook/schema/parser change.
 4. Keep downloader-only external I/O, calculations, and rendering in their respective layers.
-5. Run `npm run lint` and `npx tsc --noEmit` after code changes.
+5. Run `npm run lint`, `npx tsc --noEmit`, and `npm test` after code changes.
 6. Do not print, commit, or expose environment values, spreadsheet identifiers, or service-account credentials.
 
 ## Authentication
@@ -180,7 +180,7 @@ Primary pages:
 
 1. Home overview: net worth, monthly cash flow, savings rate, portfolio value, allocation drift, FIRE progress.
 2. Cashflow dashboard (`/cashflow`): keep contributions separate from income and expenses. Show all January–December months of the latest transaction year; missing/future values are `—`. Include income, parent-category expense, savings, and savings-rate tables with total and monthly-average columns. Monthly averages end at the previous month. Show monthly income/expense, parent-category area, savings-rate, and current-year cumulative income-versus-expense charts.
-3. Net worth dashboard (`/nw`): show financial instruments, cash assets, and other assets in separate table sections. The first columns are asset name, ticker, and currency; subsequent columns are every assets reporting period plus a final current period. The current period uses the latest downloaded prices; cash and manually valued assets use their latest reported values. Quantity rows use `metadata.DISPLAY_NAME`, then `metadata.FULL_NAME`. Use local historical prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if local market data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display absolute and percentage period-over-period changes in `CURRENCY_1`. Include a benchmark comparison using financial instruments only (quantity assets): cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments; distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals, so refresh market data and review data-quality warnings before relying on results. Provide selectable 60/40 or 100% stocks, reporting currency and rebalancing interval, contributions invested at the start of the following month, withdrawals from `cashflow`, contribution markers, and annualized money-weighted IRR.
+3. Net worth dashboard (`/nw`): show financial instruments, cash assets, and other assets in separate table sections. The first columns are asset name, ticker, and currency; subsequent columns are every assets reporting period up to the latest one with reported values (later columns are still empty and are omitted), plus a final current period that is compared with that latest valued period. The current period uses the latest downloaded prices; cash and manually valued assets use their latest reported values. Quantity rows use `metadata.DISPLAY_NAME`, then `metadata.FULL_NAME`. Use local historical prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if local market data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display absolute and percentage period-over-period changes in `CURRENCY_1`. Include a benchmark comparison using financial instruments only (quantity assets): cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments; distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals, so refresh market data and review data-quality warnings before relying on results. Provide selectable 60/40 or 100% stocks, reporting currency and rebalancing interval, contributions invested at the start of the following month, withdrawals from `cashflow`, contribution markers, and annualized money-weighted IRR. Cashflows dated after the latest reported holdings are not replayed into the benchmark, because the current portfolio value still uses those holdings.
 4. Portfolio performance and allocation: benchmark comparison, contributions, returns, target versus actual allocation, drift, and eventual look-through exposure.
 5. Monte Carlo: FIRE success probability, terminal-value distribution, sequence-of-returns scenarios, Value at Risk, and configurable assumptions.
 6. Admin/settings outside the main navbar: data refresh, constants, benchmark, cache, and data-quality checks.
@@ -190,5 +190,5 @@ Primary pages:
 - Required environment variables in `.env.local`: `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`.
 - Run `npm run download:market-data` after workbook changes and before running or deploying the app.
 - Run `npm run test:sheets` after changes to Sheets parsing or workbook validation.
-- Run `npm run lint` for code changes.
+- Run `npm run lint` and `npm test` for code changes. Tests live in `tests/*.test.ts(x)` (`node:test` through `tsx`), use synthetic data only, and need no environment variables. Add or update a test with every parser, analytics, or market-data change.
 - Do not print or commit environment values, service-account keys, or spreadsheet identifiers.

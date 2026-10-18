@@ -1,30 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useReportRange } from "@/components/ui/use-report-range";
 import type { BenchmarkInput } from "@/lib/analytics/benchmark";
 import type { HallOfFameMetric } from "@/lib/analytics/hall-of-fame";
 import type { NetWorthGrowthPoint, NetWorthReport } from "@/lib/analytics/net-worth";
+import { today } from "@/lib/dates";
+import { formatMoney } from "@/lib/format";
 import { BenchmarkComparison } from "./benchmark-comparison";
 import { HallOfFame } from "./hall-of-fame";
-import { NetWorthGrowth } from "./net-worth-growth";
+import { NetWorthByCurrency } from "./net-worth-by-currency";
 import { NetWorthChart } from "./net-worth-chart";
+import { NetWorthGrowth } from "./net-worth-growth";
 import { NetWorthTable } from "./net-worth-table";
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function yearStart(year: string) {
-  return `${year}-01-01`;
-}
-
-function yearEnd(year: string) {
-  return `${year}-12-31`;
-}
-
-function formatMoney(value: number | null) {
-  return value === null ? "—" : new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 }).format(value);
-}
 
 export function NetWorthPortfolio({
   report,
@@ -38,31 +26,11 @@ export function NetWorthPortfolio({
   hallOfFame: HallOfFameMetric[] | null;
 }) {
   const [currencyIndex, setCurrencyIndex] = useState(0);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const currentDate = today();
+  const firstPeriod = report.periods[0] ?? "";
+  const range = useReportRange({ today: currentDate, firstDate: firstPeriod, lastDate: report.periods.at(-1) ?? currentDate });
   const currency = report.currencies[currencyIndex] ?? report.currencies[0];
   const currentNetWorth = report.totals[currencyIndex]?.at(-1) ?? null;
-  const firstPeriod = report.periods[0] ?? "";
-  const currentDate = today();
-  const currentYear = currentDate.slice(0, 4);
-  const latestPeriod = report.periods.at(-1) ?? currentDate;
-  const rangeStart = startDate || firstPeriod;
-  const rangeEnd = endDate || latestPeriod;
-  const selectRange = (range: "all" | "ytd" | "current-year" | "last-year") => {
-    if (range === "all") {
-      setStartDate("");
-      setEndDate("");
-      return;
-    }
-    if (range === "ytd") {
-      setStartDate(yearStart(currentYear));
-      setEndDate(currentDate);
-      return;
-    }
-    const year = range === "current-year" ? currentYear : String(Number(currentYear) - 1);
-    setStartDate(yearStart(year));
-    setEndDate(yearEnd(year));
-  };
 
   return (
     <>
@@ -76,15 +44,9 @@ export function NetWorthPortfolio({
         report={report}
         currencyIndex={currencyIndex}
         onCurrencyChange={setCurrencyIndex}
-        startDate={startDate}
-        endDate={endDate}
-        rangeStart={rangeStart}
-        rangeEnd={rangeEnd}
+        range={range}
         firstPeriod={firstPeriod}
-        maxDate={yearEnd(currentYear)}
-        onStartDateChange={setStartDate}
-        onEndDateChange={setEndDate}
-        onRangeSelect={selectRange}
+        maxDate={`${currentDate.slice(0, 4)}-12-31`}
       />
       {report.warnings.length > 0 && (
         <section className="mb-5 border border-zinc-300 bg-zinc-50 px-4 py-3" aria-labelledby="data-quality-heading">
@@ -96,14 +58,17 @@ export function NetWorthPortfolio({
         </section>
       )}
       <NetWorthTable report={report} currencyIndex={currencyIndex} />
-      {benchmarkInputs && <BenchmarkComparison inputs={benchmarkInputs} currencyIndex={currencyIndex} startDate={rangeStart} endDate={rangeEnd} />}
+      {benchmarkInputs && (
+        <BenchmarkComparison inputs={benchmarkInputs} currencyIndex={currencyIndex} startDate={range.rangeStart} endDate={range.rangeEnd} />
+      )}
       <NetWorthGrowth
         points={growthSeries?.[currencyIndex] ?? null}
         currency={currency}
-        startDate={rangeStart}
-        endDate={rangeEnd}
+        startDate={range.rangeStart}
+        endDate={range.rangeEnd}
       />
       <HallOfFame metrics={hallOfFame} />
+      <NetWorthByCurrency report={report} startDate={range.rangeStart} endDate={range.rangeEnd} />
     </>
   );
 }

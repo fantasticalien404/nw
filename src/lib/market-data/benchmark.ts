@@ -1,14 +1,19 @@
-import { getAdjustedPriceHistory, getPriceHistory } from "@/lib/market-data/prices";
 import type { BenchmarkPrice } from "@/lib/analytics/benchmark";
+import type { MarketData } from "./prices";
 
-const STOCK_TICKER = "ACWI";
-const BOND_TICKER = "BND";
+export const BENCHMARK_TICKERS = { stock: "ACWI", bond: "BND" } as const;
 
-export async function loadBenchmarkPrices(start: string, end: string, currency: string): Promise<BenchmarkPrice[]> {
+/** Daily total-return benchmark prices in `currency`, for dates where both the stock and bond price exist. */
+export async function loadBenchmarkPrices(
+  market: MarketData,
+  start: string,
+  end: string,
+  currency: string,
+): Promise<BenchmarkPrice[]> {
   const [stocks, bonds, fx] = await Promise.all([
-    getAdjustedPriceHistory(STOCK_TICKER, start, end),
-    getAdjustedPriceHistory(BOND_TICKER, start, end),
-    currency === "USD" ? Promise.resolve([]) : getPriceHistory(`USD${currency}=X`, start, end),
+    market.adjustedHistory(BENCHMARK_TICKERS.stock, start, end),
+    market.adjustedHistory(BENCHMARK_TICKERS.bond, start, end),
+    currency === "USD" ? Promise.resolve([]) : market.history(`USD${currency}=X`, start, end),
   ]);
   const bondsByDate = new Map(bonds.map((point) => [point.date, point.close]));
   const fxByDate = new Map(fx.map((point) => [point.date, point.close]));

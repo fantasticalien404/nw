@@ -1,12 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { nextDay, today } from "@/lib/dates";
+import type { MarketPrice } from "@/types/market-data";
 import { downloadYahooPrices } from "./yahoo";
-
-export type MarketPrice = {
-  date: string;
-  close: number;
-  adjustedClose: number | null;
-};
 
 type PriceFile = {
   symbol: string;
@@ -14,21 +10,15 @@ type PriceFile = {
   prices: MarketPrice[];
 };
 
-function priceFilePath(symbol: string) {
-  return join(process.cwd(), "data", "market-data", `${encodeURIComponent(symbol)}.json`);
+export function marketDataDirectory() {
+  return join(process.cwd(), "data", "market-data");
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10);
+export function priceFilePath(symbol: string) {
+  return join(marketDataDirectory(), `${encodeURIComponent(symbol)}.json`);
 }
 
-function nextDay(date: string) {
-  const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
-}
-
-async function loadPrices(symbol: string): Promise<MarketPrice[]> {
+async function readLocalPrices(symbol: string): Promise<MarketPrice[]> {
   let contents: string;
   try {
     contents = await readFile(priceFilePath(symbol), "utf8");
@@ -50,19 +40,17 @@ async function loadPrices(symbol: string): Promise<MarketPrice[]> {
   return data.prices;
 }
 
-function pricesInRange(prices: MarketPrice[], start: string, end: string) {
-  return prices.filter((price) => price.date >= start && price.date < end);
-}
-
 function mergePrices(localPrices: MarketPrice[], downloadedPrices: MarketPrice[]) {
   const pricesByDate = new Map(localPrices.map((price) => [price.date, price]));
   for (const price of downloadedPrices) pricesByDate.set(price.date, price);
   return [...pricesByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
 }
 
-async function pricesThrough(symbol: string, end: string) {
-  const localPrices = await loadPrices(symbol);
+/** The local file, topped up from Yahoo through today when it is behind. A failed top-up keeps the local prices. */
+async function loadPriceSeries(symbol: string) {
+  const localPrices = await readLocalPrices(symbol);
   const latestLocalDate = localPrices.at(-1)?.date;
+  const end = nextDay(today());
   if (!latestLocalDate || end <= nextDay(latestLocalDate)) return localPrices;
 
   try {
@@ -72,47 +60,68 @@ async function pricesThrough(symbol: string, end: string) {
   }
 }
 
-export async function getPriceHistory(symbol: string, start: string, end: string) {
-  return pricesInRange(await pricesThrough(symbol, end), start, end).map(({ date, close }) => ({ date, close }));
+function inRange(prices: MarketPrice[], start: string, end: string) {
+  return prices.filter((price) => price.date >= start && price.date < end);
 }
 
-export async function getAdjustedPriceHistory(symbol: string, start: string, end: string) {
-  const prices = pricesInRange(await pricesThrough(symbol, end), start, end).flatMap(({ date, adjustedClose }) => (
-    adjustedClose === null ? [] : [{ date, close: adjustedClose }]
-  ));
-  if (prices.length === 0) {
-    throw new Error(`Local market data has no adjusted prices for ${symbol}.`);
+/**
+ * Price and FX lookups for one request. Each symbol is read (and topped up) once; every later lookup is
+ * answered from memory. Create one per page render and pass it to the loaders.
+ */
+export function createMarketData() {
+  const seriesBySymbol = new Map<string, Promise<MarketPrice[]>>();
+
+  function series(symbol: string) {
+    let prices = seriesBySymbol.get(symbol);
+    if (!prices) {
+      prices = loadPriceSeries(symbol);
+      seriesBySymbol.set(symbol, prices);
+    }
+    return prices;
   }
-  return prices;
-}
 
-export async function getPrice(symbol: string, date: string) {
-  const prices = await pricesThrough(symbol, nextDay(today()));
-  const price = prices.find((entry) => entry.date >= date)?.close ?? prices.at(-1)?.close;
-  if (price === undefined) {
-    throw new Error(`Local market data has no price for ${symbol} on or after ${date}.`);
+  /** Close on the first trading day on or after `date`, or the latest close when `date` is past the data. */
+  async function price(symbol: string, date: string) {
+    const prices = await series(symbol);
+    const close = prices.find((entry) => entry.date >= date)?.close ?? prices.at(-1)?.close;
+    if (close === undefined) {
+      throw new Error(`Local market data has no price for ${symbol} on or after ${date}.`);
+    }
+    return close;
   }
-  return price;
-}
 
-export async function getLatestPrice(symbol: string) {
-  const price = (await pricesThrough(symbol, nextDay(today()))).at(-1)?.close;
-  if (price === undefined) {
-    throw new Error(`Local market data has no latest price for ${symbol}.`);
+  async function latestPrice(symbol: string) {
+    const close = (await series(symbol)).at(-1)?.close;
+    if (close === undefined) {
+      throw new Error(`Local market data has no latest price for ${symbol}.`);
+    }
+    return close;
   }
-  return price;
+
+  return {
+    price,
+    latestPrice,
+    /** Daily raw closes for `[start, end)`. */
+    async history(symbol: string, start: string, end: string) {
+      return inRange(await series(symbol), start, end).map(({ date, close }) => ({ date, close }));
+    },
+    /** Daily dividend-adjusted closes for `[start, end)`; throws when none are available. */
+    async adjustedHistory(symbol: string, start: string, end: string) {
+      const prices = inRange(await series(symbol), start, end).flatMap(({ date, adjustedClose }) => (
+        adjustedClose === null ? [] : [{ date, close: adjustedClose }]
+      ));
+      if (prices.length === 0) {
+        throw new Error(`Local market data has no adjusted prices for ${symbol}.`);
+      }
+      return prices;
+    },
+    async fxRate(fromCurrency: string, toCurrency: string, date: string) {
+      return fromCurrency === toCurrency ? 1 : price(`${fromCurrency}${toCurrency}=X`, date);
+    },
+    async latestFxRate(fromCurrency: string, toCurrency: string) {
+      return fromCurrency === toCurrency ? 1 : latestPrice(`${fromCurrency}${toCurrency}=X`);
+    },
+  };
 }
 
-export function getInstrumentUrl(symbol: string) {
-  return `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`;
-}
-
-export async function getFxRate(fromCurrency: string, toCurrency: string, date: string) {
-  if (fromCurrency === toCurrency) return 1;
-  return getPrice(`${fromCurrency}${toCurrency}=X`, date);
-}
-
-export async function getLatestFxRate(fromCurrency: string, toCurrency: string) {
-  if (fromCurrency === toCurrency) return 1;
-  return getLatestPrice(`${fromCurrency}${toCurrency}=X`);
-}
+export type MarketData = ReturnType<typeof createMarketData>;

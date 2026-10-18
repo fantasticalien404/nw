@@ -1,3 +1,7 @@
+import { daysBetween, monthStart, monthsBetween } from "@/lib/dates";
+import type { ConvertedCashflowTransaction } from "@/types/workbook";
+import { isWithdrawal } from "./cashflow";
+
 export type BenchmarkId = "balanced" | "stocks";
 export type RebalancePeriod = "monthly" | "quarterly" | "yearly";
 
@@ -42,23 +46,34 @@ const weights: Record<BenchmarkId, { stock: number; bond: number }> = {
 
 type Observation = { date: string; value: number };
 
-const DAY_MS = 86_400_000;
-
-function daysBetween(start: string, end: string) {
-  return (Date.parse(end) - Date.parse(start)) / DAY_MS;
+/**
+ * External portfolio cash flows from cashflow transactions: contributions flow in at the start of the following
+ * month (positive); investment withdrawals flow out on their own date (negative). Flows after `holdingsDate`, the
+ * latest period with reported holdings, are left out: the portfolio's values do not contain them yet.
+ */
+export function benchmarkCashflows(transactions: ConvertedCashflowTransaction[], holdingsDate: string): PortfolioCashflow[] {
+  const flows = transactions.flatMap((transaction) => {
+    if (transaction.type === "contribution") {
+      return [{ date: monthStart(transaction.date, 1), amount: transaction.amount }];
+    }
+    if (transaction.type === "income" && isWithdrawal(transaction)) {
+      return [{ date: transaction.date, amount: -transaction.amount }];
+    }
+    return [];
+  });
+  return flows.filter((flow) => flow.date <= holdingsDate);
 }
 
-function monthsBetween(start: string, end: string) {
-  const startDate = new Date(`${start}T00:00:00Z`);
-  const endDate = new Date(`${end}T00:00:00Z`);
-  return (endDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + endDate.getUTCMonth() - startDate.getUTCMonth();
-}
-
+/** A rebalance is due once `period` calendar months have passed since the last one. */
 function rebalanceDue(lastDate: string, date: string, period: RebalancePeriod) {
   const interval = period === "monthly" ? 1 : period === "quarterly" ? 3 : 12;
   return monthsBetween(lastDate, date) >= interval;
 }
 
+/**
+ * Annualised money-weighted return (XIRR): the rate that discounts the start value, every external flow and the end
+ * value to zero. Solved by bisection; null when the flows have no sign change or no root is found.
+ */
 function calculateIrr(series: Observation[], flows: PortfolioCashflow[]) {
   const first = series[0];
   const last = series.at(-1)!;
@@ -99,6 +114,10 @@ function calculateIrr(series: Observation[], flows: PortfolioCashflow[]) {
   return (lower + upper) / 2;
 }
 
+/**
+ * Modified Dietz return of every interval between consecutive observations: the gain after removing external flows,
+ * over the start value plus each flow weighted by the share of the interval it was invested.
+ */
 function periodReturns(series: Observation[], flows: PortfolioCashflow[]) {
   return series.slice(1).flatMap((end, index) => {
     const start = series[index];
@@ -111,6 +130,7 @@ function periodReturns(series: Observation[], flows: PortfolioCashflow[]) {
   });
 }
 
+/** Growth, risk and drawdown metrics from interval returns. Observations are monthly, so risk is annualised with √12. */
 function performanceMetrics(series: Observation[], flows: PortfolioCashflow[]): PerformanceMetrics {
   const returns = series.length < 2 ? [] : periodReturns(series, flows);
   if (returns.length === 0) {
@@ -142,10 +162,15 @@ function performanceMetrics(series: Observation[], flows: PortfolioCashflow[]): 
   };
 }
 
+/** The first price on or after `date`, so weekend and holiday flows use the next trading day. */
 function priceOnOrAfter(prices: BenchmarkPrice[], date: string) {
   return prices.find((price) => price.date >= date) ?? prices.at(-1)!;
 }
 
+/**
+ * Replays the portfolio's external flows into the benchmark, starting from the first snapshot's value, and returns the
+ * benchmark's value at every snapshot date. Flows on a snapshot date count in that snapshot.
+ */
 function simulateBenchmark(
   snapshots: Observation[],
   flows: PortfolioCashflow[],
