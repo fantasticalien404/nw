@@ -2,147 +2,262 @@
 
 ## Objective
 
-Create a fully customizable personal-finance platform comprising:
+A private, fully customizable personal-finance dashboard made of:
 
-- A Google Sheets workbook as the single source of truth and manual data-entry layer.
-- A Next.js (or React) web application for visualization, analytics, reporting, and portfolio monitoring.
-- Local market-data files that provide downloaded current and historical prices, total-return prices, and exchange rates.
-- A private web interface accessible only to the owner.
+- A Google Sheets workbook as the single source of truth and the manual data-entry layer.
+- A Next.js web application that reads the workbook, enriches it with local market data, runs the analytics on the server and renders dashboards.
+- Local market-data files (`data/market-data`) with downloaded prices, dividend-adjusted prices and exchange rates.
 
 ### Design philosophy
 
-Enter data manually once, store it in a simple and transparent format, and let the application calculate everything else automatically.
+Enter data manually once, store it in a simple and transparent format, and let the application calculate everything else. The application is read-only for financial data: it never writes anything back to the workbook, and it has no database of its own.
 
-## Implemented Architecture
+## Status
+
+| Area | State |
+| --- | --- |
+| `/` cashflow dashboard (`/cashflow` redirects here) | Implemented: monthly report in three currencies, summary table, expense insights with filters, charts |
+| `/networth` dashboard | Implemented: trend, asset table, benchmark comparison, growth sources, hall of fame, net worth by currency |
+| Workbook parsing and contract validation | Implemented (`npm run test:sheets`) |
+| Market-data downloader and local price store | Implemented (`npm run download:market-data`); the app also tops up stale files at runtime (see [Market data](#market-data)) |
+| Test suite | 154 tests, synthetic data only (`npm test`) |
+| `/saa`, `/montecarlo`, `/docs` | Placeholders ("Coming soon") |
+| Authentication and demo mode | **Not implemented.** Do not deploy before adding Google OAuth with the allowlist (see CLAUDE.md) |
+| API routes | Not implemented; pages are server components that call the loaders directly |
+| Benchmark metrics (IRR, Sharpe, drawdown, ...) | Calculated in the analytics layer; not rendered yet |
+
+Known defects and the backlog live in [TODO.md](TODO.md). The agent instructions and the product contract live in [CLAUDE.md](CLAUDE.md); the visual rules in [STYLE.MD](STYLE.MD).
+
+## Architecture
 
 ```text
-Google Sheets (read-only from the app)
-  ├── cashflow, categories, costants
-  │       ↓ Sheets parsers + historical FX conversion
-  │       ↓ pure cashflow analytics
-  │       └── / (cashflow) server page → Recharts dashboard
-  │
-  └── assets, metadata, costants
-          ↓ Sheets parsers + local historical/current prices and FX
-          ↓ pure net-worth and benchmark analytics
-          └── /networth server page → trend, table, benchmark comparison, and rankings
+Google Sheets (read-only)                         data/market-data/*.json
+  │                                                  ▲ npm run download:market-data (Yahoo Finance)
+  │ lib/sheets: client, parsers, validation          │
+  ▼                                                  │
+typed workbook (cashflow / net worth)  ──►  lib/market-data: prices, FX, valuation, conversion
+                                                     │
+                                                     ▼
+                                          lib/analytics: pure, deterministic reports
+                                                     │
+                                                     ▼
+                    src/app: server pages and loaders ──►  src/components: tables and Recharts
 ```
 
-The application is a Next.js App Router project. Route pages are server components: they load and validate workbook data, read local market-data files, build serializable reports, and pass those reports to small client chart components. React components never call Google Sheets or external market-data providers directly.
+Rules that keep the layers apart:
 
-### Current implementation
+- `src/lib/sheets` is the only place that talks to Google Sheets. It parses and validates; it does not calculate.
+- `src/lib/market-data` reads the local price files and converts workbook data into valued, single-currency inputs. Yahoo Finance is called by the downloader script and by one runtime top-up path in `prices.ts`.
+- `src/lib/analytics` contains pure functions: no I/O, no React, no environment access.
+- Route pages are server components. A loader (`load-*-page.ts`) composes workbook loading, market-data conversion and analytics, and hands serializable reports to client components.
+- Client components own only interaction state (filters, legends, toggles). They never fetch financial data.
 
-| Route | Server workflow | UI |
-| --- | --- | --- |
-| `/networth` | Parse `assets`, `metadata`, `costants`, and `cashflow`; price holdings and benchmark instruments from local market-data files; convert historical/current values and cashflows into each reporting currency | Net-worth trend, instrument/cash/other-assets table, totals, period changes, and selectable benchmark comparison |
-| `/` (`/cashflow` redirects here) | Parse `cashflow`, `categories`, and `costants`; convert transactions into `CURRENCY_1` using local historical FX; aggregate in pure analytics | Income/expense trend, annual income and spending tables, category area chart, savings rate, and cumulative cashflow |
+### Request lifecycle
+
+1. The page calls `await connection()`, so it is rendered per request. There is no cache: every page load re-reads the workbook and the price files.
+2. The loader reads the needed tabs in parallel with one Sheets call per range and parses them into typed workbooks.
+3. A fresh market-data object is created for the request. It reads each price file at most once and answers every later lookup from memory.
+4. Workbook values are priced and converted, then the analytics build the reports.
+5. The page renders. If a step fails, the page shows the error message in a bordered box instead of the dashboard. On `/networth` the cashflow-dependent sections fail separately and leave the rest intact (see [Failure handling](#failure-handling)).
 
 ### Module boundaries
 
-- `src/lib/sheets`: Google Sheets I/O (`client.ts`), pure tab parsers and normalization (`cashflow.ts`, `net-worth.ts`, `parse.ts`), and the contract checks behind `npm run test:sheets` (`validate.ts`).
-- `src/lib/market-data`: local historical/current price and FX lookup. `createMarketData()` reads each symbol's file once per request; `net-worth.ts` and `cashflow.ts` convert workbook data into valued, single-currency inputs for analytics.
-- `data/market-data`: one downloaded JSON file per ticker or FX pair.
-- `scripts/download-market-data.ts`: refreshes the local price store from Yahoo Finance.
-- `src/lib/analytics`: deterministic calculations only; no external I/O. `cashflow-insights.ts` holds the calculations behind the cashflow filters.
-- `src/lib/dates.ts`, `src/lib/format.ts`: shared UTC date helpers and display formatting.
-- `src/types`: domain types shared by the layers above.
-- `src/app`: thin server pages; each route's loader (`load-*-page.ts`) composes workbook loaders, market-data conversion, and analytics.
-- `src/components`: presentational tables and client-side Recharts visualizations; `charts/chart-style.ts` holds the shared chart styling.
-- `scripts/test-google-sheets.ts`: executable workbook-contract validation against the live workbook.
-- `tests`: the `node:test` suite (`npm test`), which uses synthetic data only.
-
-## Market-data workflow
-
-Run `npm run download:market-data` after updating the workbook and before starting the app or deploying. The downloader reads the workbook to determine quantity tickers, reporting currencies, and transaction currencies; it also adds ACWI and BND for the benchmark. It stores one JSON file per symbol in `data/market-data/`, named with `encodeURIComponent(symbol)`, for example `ACWI.json` and `USDEUR%3DX.json`.
-
-Each file contains the source symbol, download timestamp, and daily records with raw `close` and dividend-adjusted `adjustedClose` values. Raw closes value the net-worth table and FX. Adjusted closes value benchmark total returns. The app makes no runtime market-data requests. Missing or stale files surface data-quality warnings; refresh the files rather than relying on a runtime fallback.
-
-### Libraries
-
-| Library | Role |
+| Path | Responsibility |
 | --- | --- |
-| Next.js 16 | App Router, server rendering, request caching |
-| React 19 | UI composition and client chart components |
-| TypeScript | Typed boundaries between parsing, analytics, and UI |
-| Tailwind CSS 4 | Utility-first styling |
-| Recharts | Interactive line and area charts |
-| googleapis | Service-account Google Sheets client |
-| TSX | TypeScript workbook-validation script runner |
-| ESLint | Static code-quality checks |
+| `src/lib/sheets/client.ts` | Service-account Google Sheets client; reads A1 ranges with unformatted values (the only Sheets I/O) |
+| `src/lib/sheets/cashflow.ts`, `net-worth.ts`, `parse.ts` | Pure tab parsers and normalization (dates, currencies, headers, constants) |
+| `src/lib/sheets/validate.ts` | Contract checks behind `npm run test:sheets`; reports every problem with row numbers |
+| `src/lib/market-data/prices.ts` | Local price and FX store: reads files, optional top-up, price and FX lookups |
+| `src/lib/market-data/net-worth.ts` | Values every asset per period and currency; price changes for the growth sources |
+| `src/lib/market-data/cashflow.ts` | Converts transactions to a reporting currency at their own date |
+| `src/lib/market-data/benchmark.ts` | Daily benchmark prices (ACWI, BND) in a report currency |
+| `src/lib/market-data/symbols.ts` | Every symbol the dashboards need (tickers, benchmark ETFs, FX pairs) |
+| `src/lib/market-data/yahoo.ts` | Yahoo Finance chart-endpoint client |
+| `src/lib/analytics/net-worth.ts` | Totals, period changes and growth sources |
+| `src/lib/analytics/benchmark.ts` | Benchmark simulation, Modified Dietz returns, XIRR and risk metrics |
+| `src/lib/analytics/hall-of-fame.ts` | Monthly rankings |
+| `src/lib/analytics/cashflow.ts` | Monthly cashflow report and moving-average series |
+| `src/lib/analytics/cashflow-insights.ts` | Calculations behind the expense filters and insight charts |
+| `src/lib/dates.ts`, `format.ts`, `sets.ts` | UTC date helpers, display formatting (plain numbers, `—` for missing), small set helper |
+| `src/types` | Domain types shared by the layers |
+| `src/app` | Routes, page loaders and the read-only server pages |
+| `src/components` | Tables and Recharts charts; `charts/chart-style.ts` holds the shared chart styling, `ui/` the shared filters |
+| `scripts` | `download-market-data.ts` (price store refresh) and `test-google-sheets.ts` (workbook validation) |
+| `tests` | The `node:test` suite and its synthetic fixtures |
 
-## Google Sheets Structure
+## Workflow
 
-The Google Sheet serves as both the database and the manual data-entry interface. It stores all information required by the system.
+### Routine (after changing the workbook)
 
-### Tab 1: cashflow
+1. **Update the workbook by hand.** Add transactions to `cashflow`; add a new reporting-period column to `assets` with the quantities, cash balances and manual values. Keep `cashflow.CATEGORY` equal to a `categories.CATEGORY` value, or blank when unsure. Add new tickers to `metadata`. The app never writes to the workbook.
+2. **`npm run test:sheets`.** Reads all six tabs from the live workbook, checks the contract (headers, types, currencies, ascending dates, known categories, required metadata) and then runs the app's own parsers on the same rows, so the check cannot pass while a page would fail. It needs `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY` in `.env.local`; the service account needs Viewer access.
+3. **`npm run download:market-data`.** Reads both workbooks to find every symbol, then downloads the full history from the earliest workbook date through today for each one, and overwrites its file in `data/market-data`. It pauses 500 ms between symbols. Run it after workbook changes, when a new ticker or currency appears, and before deploying.
+4. **`npm run dev`** (runs `test:sheets` first, then `next dev`) or `npm run build && npm start`. Open `/` for cashflow and `/networth` for net worth.
 
-Contains all income, expenses, and investment contributions. One row represents one transaction.
+Reporting periods: the `assets` tab may contain empty columns for future periods. They are ignored until some asset has a value in them, so you can pre-create the year's columns.
 
-#### Structure
+### Before committing code
 
-| DATE | TYPE | NAME | AMOUNT | CURRENCY | CATEGORY | SUBCATEGORY | NOTES |
-| --- | --- | --- | ---: | --- | --- | --- | --- | --- |
+```bash
+npm run lint
+npx tsc --noEmit
+npm test
+```
 
-`Type` is one of `income`, `expense`, or `contribution`. Amounts are non-negative; type determines the cash-flow direction. Expense categories must exactly match an entry in the `categories` tab; leave uncertain categories blank until they are assigned. Use `tax` as an `expense` category and `withdrawal` as an `income` category.
+Add or update a test with every change to a parser, an analytics function or the market-data layer. Run `npm run test:sheets` after any workbook, schema or parser change. Never print or commit environment values, the spreadsheet id or service-account credentials, and never write real workbook data to disk when debugging.
 
-#### Investment cash flows
+## Market data
 
-Use `contribution` when money enters the invested portfolio from outside it. Record the transaction date, amount, and currency. Contributions are used as external cash flows for performance calculations, but are balance transfers rather than expenses: exclude them from spending, income, savings-rate, and category reports.
+### The local store
 
-Record money leaving the invested portfolio as an `income` transaction with the `withdrawal` category. The performance calculation treats this category as an external portfolio withdrawal, while income reporting includes it as income. Purchases, sales, dividends, fees, and taxes remain internal to the investment platform and are not recorded in `cashflow`.
+`data/market-data` holds one JSON file per symbol, named with `encodeURIComponent(symbol)`, for example `ACWI.json` and `USDEUR%3DX.json`. A file contains the symbol, a download timestamp and daily rows with the raw `close` and the dividend-adjusted `adjustedClose` (null when the provider has none).
 
-The `/networth` benchmark comparison invests every `contribution` in the benchmark at the start of the following month and treats every `withdrawal` as an outflow on its transaction date. It uses financial instruments only (quantity assets); cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments, so distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals; refresh market data and review data-quality warnings before relying on the comparison. Scheduled benchmark contributions are marked on the comparison chart.
+The downloader requests, for every run:
 
-#### Dashboard workflow
+- Every `assets.ASSET` whose datatype is `quantity` (the ticker).
+- `ACWI` and `BND` for the benchmark.
+- An FX pair `FROMTO=X` from every currency found in the workbooks (report currencies, asset currencies, transaction currencies) to every reporting currency, so every conversion can be answered directly, without inverting or chaining rates.
 
-1. The app reads the transactions and excludes `contribution` rows from income, expense, savings, and category reporting.
-2. Every transaction is converted to `CURRENCY_1` at the historical FX rate for its date.
-3. The dashboard reports the latest transaction year and includes every January–December month. Missing or future months display as `—` and chart as gaps.
-4. Income and expenses are aggregated monthly. Expense category aggregation uses `CATEGORY → PARENT_CATEGORY`; blank categories remain unclassified rather than being guessed.
-5. Savings are $income - expenses$ and the monthly savings rate is $savings / income$ when income is non-zero.
+Replacing Yahoo means changing `scripts/download-market-data.ts` and `lib/market-data/yahoo.ts` while keeping this file format.
 
-The server supplies the dashboard's UTC reporting date so the initial render and hydration share the same date boundaries. Expense filtering and moving-window calculations are memoized independently of legend and menu state. `npm test` renders the dashboard from synthetic reports, including empty ones; it does not access Sheets or market-data files.
+### Lookups
 
-## Benchmark comparison
+- **Price or FX on a date:** the close of the first trading day on or after the date. Weekend and holiday dates therefore use the next trading day. A date after the last row uses the latest close, and a date before the first row uses the first close.
+- **Latest price or FX:** the last row of the series.
+- **Raw closes** value the net-worth table and convert currencies. **Adjusted closes** (total return) drive the benchmark and the year-to-date column.
+- A missing or corrupt file raises `Download market data for <symbol> with npm run download:market-data.`
 
-The `/networth` page compares the financial-instruments portfolio—`quantity` rows only—with either a **60/40** benchmark (60% ACWI, 40% BND) or **100% stocks** (ACWI). Cash and manually valued assets are excluded from both the portfolio series and the comparison. Benchmark prices use dividend-adjusted closes, are converted daily into the selected reporting currency, and are rebalanced monthly by default; quarterly and yearly rebalancing are also available.
+### Runtime top-up
 
-### Cash-flow treatment
+When a file's last date is before today, `prices.ts` requests the missing days from Yahoo once per symbol per request and merges them in memory. Nothing is written to disk. If the request fails, the local rows are used silently. This is a deviation from the "no runtime market-data requests" rule in CLAUDE.md: it keeps the "current" column fresh without running the downloader, but it makes weekend and holiday renders issue requests and can merge re-based adjusted closes into older rows. It is tracked in [TODO.md](TODO.md); run the downloader regularly instead of relying on it.
 
-- The benchmark starts with the same value as the first non-null financial-instruments snapshot.
-- A `contribution` is an external portfolio inflow. It is converted to the selected reporting currency, scheduled for the first day of the following month, and invested in the benchmark on the first market close on or after that date. The chart marks this scheduled investment date.
-- An `income` row with the `withdrawal` category is an external portfolio outflow. It is converted to the selected reporting currency and removed from the benchmark on its transaction date.
-- Both the portfolio and benchmark use this same external-cash-flow list. Purchases, sales, platform fees, taxes, and dividends are internal portfolio activity and are not external cash flows.
-- A cash flow on a snapshot date is included in that snapshot. Weekend and holiday flows use the first close on or after the date. Missing portfolio snapshots are skipped; the following performance interval includes all flows since the preceding non-null snapshot.
+## Backend logic in detail
 
-### Calculation and metrics
+### Reading and parsing the workbook
 
-Both series are measured only on the portfolio's non-null reporting dates. For every interval, the app calculates a Modified Dietz return:
+- Ranges read: `cashflow!A:H`, `categories!A:D`, `costants!A:B`, `assets!A:Z` (at most 22 reporting-period columns), `metadata!A:F`.
+- Dates arrive as Google Sheets serial numbers and become ISO `YYYY-MM-DD` strings. Every date in the app is a UTC calendar day, never local time.
+- Headers are matched case-insensitively. The seventh `cashflow` header may be `CITY`, a legacy alias for `SUBCATEGORY`. `DOL` is accepted as a legacy alias for `USD`.
+- Parsers throw on the first problem (for example an unknown category on a row); `test:sheets` reports all of them.
+- **Report currencies.** Cashflow: `CURRENCY_1..3` from `costants`, valid three-letter codes, unique, in order (at least `CURRENCY_1`). Net worth: `CURRENCY_1` first, then `CURRENCY_2` and `CURRENCY_3`, then `EUR`, `CHF`, `USD` (excluding duplicates) to fill up to three; only these three currencies are supported there.
+
+### Net-worth valuation (`valueNetWorth`)
+
+1. The **latest reporting period** is the last `assets` column in which any asset has a value. Later columns are empty and are dropped. The periods used are every column up to it, plus the **current date**, which always comes last.
+2. For each asset and period, the reported cell is read. A blank cell means no value (`null`).
+   - `quantity`: quantity × the close on or after the period date.
+   - `cash` and `value`: the reported number.
+   - **Current period:** the latest reported quantity or balance (from the latest reporting period) × the latest close.
+3. Each value is converted into every report currency with the FX rate of the same date (latest rate for Current).
+4. A lookup that fails (missing file, no price) gives `null` and a data-quality warning; the remaining assets are unaffected. Warnings are de-duplicated and shown above the table.
+
+### Net-worth reports
+
+- **Totals** are computed independently in each report currency: the sum of all non-null converted values of the period, split into financial instruments, cash and other assets. A total is `null` only when no asset has a value. Missing values are skipped, not counted as zero, so a missing price understates a total; the warning says so.
+- **Change rows** compare each period with the previous one in the first report currency: absolute change, and percentage change when the previous total is non-zero. Current is compared with the last valued period.
+- **YTD %** per instrument: the dividend-adjusted close from the first trading day of the year to the latest close, with the FX rate of the first day and the latest FX rate, in the selected currency. It is `null` for cash and manual assets.
+- **Growth sources** (per period, per currency):
+  - *Salary*: income transactions categorized `salary` dated in (previous period, period].
+  - *Financial assets*: for each quantity asset, (end price − start price) × holdings at the start of the period, summed and converted at the start-of-period FX rate. A missing price or rate makes the period `null`.
+  - *Total increase*: the actual change of the total net worth. The two sources are explanatory, not an exact decomposition: contributions, other income, expenses and currency moves are not part of them.
+- **Hall of fame**: twelve monthly rankings (best income, salary, net-worth change, savings and savings rate; highest and lowest expenses; worst net-worth change), each top ten plus the current month's value. Months run from the earliest of the first reporting period and the first transaction through the current month. Income and expenses are converted per transaction at its own date; rankings use CHF and EUR whatever the report currencies are. The current month is partial.
+
+### Benchmark engine
+
+The comparison covers the **financial-instruments portfolio only** (`quantity` rows): cash and manually valued assets are excluded. Two benchmarks are simulated at once, **60/40** (60% ACWI, 40% BND) and **100% stocks** (ACWI), with a selectable rebalancing interval (monthly by default, quarterly, yearly). Benchmark prices are dividend-adjusted closes converted daily into the selected report currency.
+
+External flows come from `cashflow`:
+
+- A `contribution` enters the portfolio at the **start of the following month** and is invested in the benchmark on the first close on or after that date.
+- An `income` row with the `withdrawal` category leaves the portfolio on its own date. It is also income for cashflow reports.
+- Flows after the **latest reported holdings** are not replayed. The Current portfolio value reuses those holdings, so a contribution invested later is not in the portfolio yet; including it would inflate the benchmark.
+- Purchases, sales, dividends, fees and taxes inside the platform are internal and never recorded in `cashflow`. The portfolio-return series assumes distributions are reinvested in the tracked instruments, so ETF dividends held as broker cash understate returns.
+
+The benchmark starts with the value of the first non-null portfolio snapshot and replays the same flows. A flow on a snapshot date counts in that snapshot; rebalancing happens once the chosen number of calendar months has passed since the last one.
+
+Metrics (computed by `buildBenchmarkComparison`; not displayed yet) use the interval returns between the portfolio's non-null snapshots. Each interval return is a Modified Dietz return:
 
 $$
 r = \frac{V_{end} - V_{start} - \sum CF}{V_{start} + \sum(CF \cdot w)}
 $$
 
-where $w$ is the fraction of the interval for which a flow was invested. A flow on the interval end date has $w = 0$. This removes the effect of external contributions and withdrawals before comparing investment performance.
+where $w$ is the fraction of the interval for which a flow was invested (a flow on the end date has $w = 0$).
 
-- **Growth from beginning:** compounded product of the Modified Dietz interval returns.
-- **IRR:** annualized money-weighted return (XIRR) using the initial value, every external cash flow, and the final value.
-- **Volatility:** sample standard deviation of interval returns, annualized with $\sqrt{12}$ because reporting snapshots are monthly.
-- **Sharpe ratio:** mean interval return divided by its standard deviation, annualized with $\sqrt{12}$; it currently assumes a zero risk-free rate.
-- **Maximum drawdown:** worst fall from peak in a flow-free cumulative-return index, so deposits and withdrawals cannot create or hide a drawdown.
-- **Best/worst month:** highest and lowest individual snapshot-interval return.
+- **Growth:** compounded product of the interval returns.
+- **IRR:** annualized money-weighted return (XIRR) over the first value, every flow and the last value, solved by bisection.
+- **Volatility:** sample standard deviation of interval returns × $\sqrt{12}$ (monthly snapshots).
+- **Sharpe ratio:** mean interval return over its standard deviation × $\sqrt{12}$, with a zero risk-free rate.
+- **Maximum drawdown:** worst fall from the peak of the flow-free cumulative index.
+- **Best / worst month:** highest and lowest interval return.
 
-The portfolio total can be understated when local ticker prices are missing. Refresh market data and review data-quality warnings before relying on the comparison. Distributing ETF dividends held as broker cash are also excluded, so the portfolio-return series assumes distributions are reinvested in the tracked instruments.
+### Cashflow pipeline
+
+1. Every transaction is converted into each reporting currency at the FX rate of its own date.
+2. `contribution` rows are excluded from income, spending, savings-rate and category reports. They matter only to the benchmark.
+3. `buildCashflowReport` buckets income and expenses by month from the first to the last transaction. A month with no transaction has all-`null` values: tables show `—` and charts show a gap. Income is also grouped by category; expenses by category and by parent category (`CATEGORY → PARENT_CATEGORY`); salary is income categorized `salary`. Expenses with a blank category are never inferred: they count in totals and in `unclassifiedExpenses`, but not in any category row.
+4. Savings are $income - expenses$; the savings rate is $savings / income$ when income is non-zero.
+5. `periodsInRange` returns one period per month in a date range, filling months without data with `null` periods.
+
+### Cashflow summary table
+
+- Shows January to December of the selected year (the latest transaction year by default) with a Total column and a Monthly avg column.
+- Totals sum the months that have data. The total savings rate is total savings over total income.
+- Monthly averages cover the months up to the previous month (the current month is still in progress); months in that window without data count as zero. The savings-rate average is the mean of the monthly rates that exist.
+- Rows: income by category, expenses by parent category, two "no rent" variants, expenses, savings and savings rate.
+
+### Expense insights and filters
+
+The insights section works on the categorized expense transactions of the selected report currency.
+
+- **Date range** (shared with the trend chart): quick ranges All time, YTD, Current year, Last year, or explicit From/To dates. Insights never look past today; an empty or reversed range selects nothing.
+- **Month** filter: keep only one calendar month in every year of the range.
+- **Classification**: all, essential, discretionary (not essential), recurring, non-recurring.
+- **Parent categories** and **categories**: checkbox menus. Both apply together (an expense must match both); an empty selection means no filter.
+- From the selection the app derives the totals tiles (total, daily average over the selected days, salary, essential, discretionary, recurring), the monthly stacked category chart, the essential/discretionary/recurring charts, the savings-rate chart and the cumulative salary-versus-expenses chart. The savings rate is the month's income against the *selected* expenses.
+- The **category chart** draws only groups with expenses in the selection, largest first, with 12 distinct colours; beyond 12 groups the smallest are merged into one grey series. Clicking a legend entry hides a series.
+- The **moving average** chart and table are independent of the filters: they use every expense up to the end of the previous month and a window of 1 or more days.
+- The **historical expenses** chart follows one category or one parent category month by month, optionally next to salary.
+
+### Failure handling
+
+- Workbook or market-data errors on `/` show the error message instead of the dashboard.
+- On `/networth`, a missing price or FX rate becomes a `—` cell plus a warning. If the cashflow side or the benchmark prices cannot be loaded, the growth table, rankings and benchmark comparison degrade on their own and a single warning is added, while the report itself still renders.
+
+## Frontend
+
+- **Net worth.** Header with the current net worth in the selected currency; trend chart with currency buttons, date-range filters and the change since the first period; the asset table (instruments, cash and other assets with subtotals, totals in every report currency, absolute and percentage change, a year selector and the YTD column); the benchmark comparison with contribution markers and the methodology dialog; the growth sources chart with an optional summary table; the hall of fame; net worth in all currencies on one axis. The range filter applies to the charts, not to the table (its own year selector) or the hall of fame.
+- **Cashflow.** Currency buttons and the date range at the top; monthly income, expenses and salary trend; the summary table; the expense insights; the historical expenses chart.
+- **Conventions** (STYLE.MD): plain numbers without currency symbols (the currency appears in headings, total rows and tooltips), `—` for missing values, grey-bordered tables with a light-grey header, no CSS animations, restrained hover tooltips.
+- **Responsive behaviour.** Charts use Recharts `ResponsiveContainer`. Wide tables have a minimum width per period column and scroll horizontally inside their frame on narrow screens. The server passes the reporting date to the cashflow dashboard so the first render and hydration agree.
+
+## Google Sheets Structure
+
+The Google Sheet serves as both the database and the manual data-entry interface. Tab names are lowercase and fixed: `cashflow`, `assets`, `categories`, `metadata`, `saa`, `costants` (intentional spelling).
+
+### Tab 1: cashflow
+
+Contains all income, expenses and investment contributions. One row represents one transaction.
+
+#### Structure
+
+| DATE | TYPE | NAME | AMOUNT | CURRENCY | CATEGORY | SUBCATEGORY | NOTES |
+| --- | --- | --- | ---: | --- | --- | --- | --- |
+
+`TYPE` is one of `income`, `expense` or `contribution`. Amounts are non-negative; the type determines the direction. Expense categories must exactly match an entry in `categories`; leave uncertain categories blank until they are assigned. Use `tax` as an `expense` category and `withdrawal` as an `income` category.
+
+#### Investment cash flows
+
+Use `contribution` when money enters the invested portfolio from outside it. Contributions are external cash flows for performance calculations but balance transfers, not expenses: they are excluded from spending, income, savings-rate and category reports.
+
+Record money leaving the invested portfolio as an `income` transaction with the `withdrawal` category. Performance calculations treat it as an external withdrawal while income reporting counts it as income. Purchases, sales, dividends, fees and taxes remain internal to the investment platform and are not recorded in `cashflow`.
 
 ### Tab 2: assets
 
-The tab is divided into financial assets and accounts. Each row represents one asset or account, and each date column represents a reporting period.
+Each row is one asset or account; each date column is a reporting period (ascending dates). The reported value is interpreted by `DATATYPE`:
 
-The value in each reporting-period cell is interpreted according to `Datatype`:
-
-- `quantity`: number of units held. For ticker-based financial products, the backend retrieves the historical market price for the reporting period and calculates market value as quantity × price.
+- `quantity`: units held. The backend values them with the historical market price of the reporting period (quantity × price).
 - `cash`: reported cash balance.
-- `value`: reported market value for non-ticker assets or manually valued assets.
+- `value`: reported value of a non-ticker or manually valued asset.
 
 #### Structure
 
@@ -157,226 +272,91 @@ The value in each reporting-period cell is interpreted according to `Datatype`:
 | Cash | cash | EUR | Unicredit Bank | 20000 |
 | Cae | value | EUR | - | 1000 |
 
-Historical FX rates are used to convert every reporting-period value to the base currency. The corresponding historical price is also used for `quantity` assets. Use ISO 4217 currency codes such as `USD`; `DOL` is accepted as a legacy alias for `USD`.
-
-
-
-#### Purpose
-
-- Cash allocation
-- Net-worth reconstruction and trend tracking across reporting periods
-- Liquidity monitoring
-- Asset allocation
-- Asset grouping
-- Exposure reports
-- Portfolio analytics
+Every value is converted with the historical FX rate of its date. Use ISO 4217 codes such as `USD`. Columns after the latest period that has any value are ignored.
 
 ### Tab 3: metadata
 
-Provides financial-instrument reference data. `TICKER` must match the `ASSET` value for a `quantity` row in `assets`. `DISPLAY_NAME` is optional; the net-worth table uses it when present, otherwise `FULL_NAME`. Instrument names link to the Yahoo Finance quote page.
+Instrument reference data. `TICKER` must match the `ASSET` of a `quantity` row in `assets`. `DISPLAY_NAME` is optional: the net-worth table uses it when present, otherwise `FULL_NAME`. Instrument names link to their Yahoo Finance quote page.
 
 | TICKER | DISPLAY_NAME | FULL_NAME | CURRENCY | TER | ISSUER |
 | --- | --- | --- | --- | --- | --- |
 
 ### Tab 4: categories
 
-A reference table for organizing expenses.
-
-#### Structure
-
-| CATEGORY | PARENT_CATEGORY | IS_ESSENTIAL | IS_RECURRING |
-| --- | --- | --- | --- |
-
-`IS_ESSENTIAL` and `IS_RECURRING` accept `TRUE` or blank. Blank is interpreted as `FALSE`.
-
-#### Examples
+A reference table for organizing expenses (and the income categories used in `cashflow`).
 
 | CATEGORY | PARENT_CATEGORY | IS_ESSENTIAL | IS_RECURRING |
 | --- | --- | --- | --- |
 | Grocery | Food | TRUE | TRUE |
 | Restaurants | Food |  |  |
 | Rent | Housing | TRUE | TRUE |
-| Utilities | Housing | TRUE | TRUE |
 | Flights | Travel |  |  |
 
-#### Purpose
-
-- Expense reports
-- Category breakdowns
-- Budget analysis
-- Long-term spending statistics
+`IS_ESSENTIAL` and `IS_RECURRING` accept `TRUE` or blank (blank means false). `CATEGORY` values are unique.
 
 ### Tab 5: saa
 
-Contains historical target allocations. Unlike a static target, this time series allows the investment policy to evolve over time. Each reporting-period column contains the target percentage for the corresponding asset or instrument.
-
-Targets do not need to total $100\%$. The allocation dashboard calculates drift against each target independently.
-
-#### Structure
-
-| ASSET_CLASS | INSTRUMENT | Reporting Period | Reporting Period | ... |
-| --- | --- | --- | --- | --- |
-
-#### Example
+Historical target allocations: one time series per instrument, so the policy can change over time. Targets do not need to total $100\%$; drift is calculated against each target independently. The SAA page is not built yet.
 
 | ASSET_CLASS | INSTRUMENT | 01-01-2020 | 01-01-2021 |
 | --- | --- | ---: | ---: |
 | equities | VT | 0.9 | 0.8 |
 | equities | VTI | 0.1 | 0.2 |
 
-#### Purpose
-
-- Drift analysis
-- Rebalancing monitoring
-- Historical policy tracking
-- Portfolio governance
-
-The dashboard always uses the latest target configuration applicable on each date.
-
 ### Tab 6: costants
 
-Contains system-wide constants and settings. `CURRENCY_1` is required and drives cashflow reporting; `CURRENCY_2` and `CURRENCY_3` are optional secondary net-worth totals.
-
-#### Structure
-
-Each row has a constant key in column A and its value in column B; this tab has no header row.
-
-#### Examples
+System-wide constants. Each row has a key in column A and its value in column B; there is no header row. `CURRENCY_1` is required; `CURRENCY_2` and `CURRENCY_3` are optional.
 
 | Key | Value |
 | --- | --- |
-| Base Currency | CHF |
-| FIRE Target | 1,500,000 |
-| Safe Withdrawal Rate | 0.04 |
-| Inflation Assumption | 0.02 |
+| CURRENCY_1 | CHF |
+| CURRENCY_2 | EUR |
+| CURRENCY_3 | USD |
 
-#### Purpose
-
-Centralizes configuration and avoids hardcoded application parameters.
-
-## Development Workflow
-
-1. Enter or correct data in Google Sheets. The app never writes financial data to the workbook.
-2. Keep `cashflow.CATEGORY` equal to a `categories.CATEGORY` value. Leave an uncertain category blank; do not guess a mapping.
-3. Maintain instrument names and reference data in `metadata`; use `DISPLAY_NAME` only when a shorter dashboard label is desired.
-4. Run `npm run download:market-data` after workbook changes and before running or deploying the app.
-5. Run workbook validation before working on dependent calculations or UI.
-6. Keep Sheets and downloader I/O separate from analytics and rendering.
-7. Validate code changes with linting and TypeScript before release.
-
-## Tests
+## Tests and validation
 
 ```bash
-npm test
+npm test            # node:test suite through tsx
+npm run test:sheets # live workbook contract check
 ```
 
-Runs the `node:test` suite in `tests/` through `tsx`. It needs no environment variables and never touches Google Sheets, the real `data/market-data` files, or the network: tab parsers take plain arrays, market-data tests use a temporary directory and a stubbed `fetch`, and the dashboards are rendered from synthetic reports. Add a test whenever you change a parser, an analytics function, or the market-data layer.
+`npm test` runs 17 test files in `tests/`. It needs no environment variables and never touches Google Sheets, the real `data/market-data` files or the network: tab parsers take plain arrays, market-data tests use a temporary directory and a stubbed `fetch`, and the dashboards are rendered from synthetic reports. It covers parsing, validation, valuation, analytics, the benchmark, the hall of fame, the filters, the page loaders and the dashboard render.
 
-## Workbook Validation
+`npm run test:sheets` checks, per tab:
 
-Run the Google Sheets validation after changing workbook data:
+- `cashflow`: required columns; required values; allowed types; non-negative amounts; three-letter currency codes; known categories.
+- `assets`: required columns; ascending Google Sheets dates; allowed datatypes; numeric values.
+- `metadata`: required columns; every field except `DISPLAY_NAME` is required.
+- `categories`: required columns and values; boolean `TRUE`/blank flags; no duplicates.
+- `saa`: required columns; ascending dates; non-negative targets.
+- `costants`: no header row; a non-empty key and value on every row.
 
-```bash
-npm run test:sheets
-```
+## Libraries
 
-The command requires `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, and `GOOGLE_PRIVATE_KEY` in `.env.local`. The current service account needs spreadsheet **Viewer** access because the product is read-only. It validates all six tabs, then runs the app's own parsers on the same rows so the check cannot pass while a page would fail:
+| Library | Role |
+| --- | --- |
+| Next.js 16 | App Router, server rendering |
+| React 19 | UI composition and client chart components |
+| TypeScript | Typed boundaries between parsing, analytics and UI |
+| Tailwind CSS 4 | Styling |
+| Recharts | Every interactive chart |
+| googleapis | Service-account Google Sheets client |
+| tsx | Test runner and script runner |
+| ESLint | Static code-quality checks |
 
-- `cashflow`: required column names (case-insensitive); required values; allowed types; non-negative numeric amounts; three-letter uppercase currency codes; non-empty categories must exist in `categories`.
-- `assets`: required columns; ascending Google Sheets reporting-period dates; allowed datatypes; non-negative values.
-- `metadata`: `TICKER`, `DISPLAY_NAME`, `FULL_NAME`, `CURRENCY`, `TER`, and `ISSUER` columns; all fields except `DISPLAY_NAME` are required.
-- `categories`: `CATEGORY` and `PARENT_CATEGORY` columns with values in every row.
-- `saa`: `ASSET_CLASS` and `INSTRUMENT` columns; ascending reporting-period dates; non-negative targets without requiring a $100\%$ total.
-- `costants`: no header row; a non-empty key and value in every row.
+## Planned
 
-## Market Data Layer
+Not built yet; see [CLAUDE.md](CLAUDE.md) for the full product scope and [TODO.md](TODO.md) for the backlog.
 
-The application reads versioned price files from `data/market-data`; it never queries a market-data provider while serving a dashboard page. `npm run download:market-data` is the only command that calls Yahoo Finance. Replacing Yahoo requires changing only that downloader script and preserving the documented JSON format.
+- Google OAuth restricted to an `ALLOWED_EMAILS` allowlist, plus a demo mode that blurs cashflow and shows only relative data elsewhere, enforced in the backend.
+- Home overview, SAA allocation and drift, Monte Carlo and FIRE analysis, admin and data-quality pages.
+- Read-only JSON API routes (portfolio, net-worth history, spending, allocation, performance), if they are wanted.
 
-## Backend Design
+## Design principles
 
-### Technology
-
-- Next.js API routes, or
-- A Node.js Express server
-
-### Core Responsibilities
-
-- **Load Google Sheets:** Retrieve all tabs.
-- **Read local market data:** Load downloaded price data for all currently held assets.
-- **Refresh market data:** Run the explicit downloader outside request handling.
-- **Compute analytics:** Calculate net worth, asset allocation, savings rate, returns, monthly spending, and regional exposure.
-- **Serve the frontend:** Expose clean API endpoints.
-
-### Suggested API Endpoints
-
-| Area | Endpoint | Returns |
-| --- | --- | --- |
-| Portfolio | `/api/portfolio/current` | Current holdings, market values, allocation |
-| Net worth | `/api/networth/history` | Historical net worth, cash, investments, total assets |
-| Spending | `/api/spending/monthly` | Monthly expenses |
-| Spending by category | `/api/spending/categories` | Category breakdowns |
-| Savings rate | `/api/savings-rate` | Monthly savings rates, rolling averages |
-| Allocation | `/api/allocation` | Actual allocation, target allocation, drift |
-| Performance | `/api/performance` | Cumulative returns, portfolio growth, contribution analysis |
-
-## Frontend Dashboard
-
-### Technology
-
-- Next.js
-- React
-- TypeScript
-- Tailwind CSS
-
-### Authentication
-
-Recommended approach: Google sign-in restricted to the approved Google account.
-
-An alternative is a password-protected site, which is simpler to implement.
-
-### Dashboard Sections
-
-| Section | Displays | Charts |
-| --- | --- | --- |
-| Home | Net worth, monthly savings, current portfolio value, cash position | — |
-| Portfolio | Holdings, allocation, exposure, performance | Pie chart, allocation trend, value evolution |
-| Net Worth | Historical net worth, asset growth, capital accumulation | Net-worth evolution, cash vs. investments |
-| Spending | Monthly expenses, spending categories, long-term trends | Category breakdown, monthly spending, year-over-year comparisons |
-| Income | Salary, dividends, other income sources | Income history, income composition |
-| Allocation | Current allocation, target allocation, allocation drift | Stacked allocation history, actual vs. target |
-| Analytics | Advanced metrics | — |
-
-### Analytics Metrics
-
-- Savings rate
-- Portfolio growth
-- Net-worth growth
-- Asset-allocation drift
-- Dividend income
-- Cash ratio
-- Equity ratio
-- FIRE progress
-- Invested capital
-- Total gain
-- Gain versus contributions
-
-## Advantages of This Architecture
-
-- **Simplicity:** Data entry is as simple as updating Google Sheets.
-- **Flexibility:** The dashboard can evolve independently of the database.
-- **Low cost:** Google Sheets and Vercel are effectively free for personal use.
-- **Full ownership:** There is no dependency on third-party personal-finance applications.
-- **Transparency:** All data remains visible and editable.
-- **Extensibility:** Future integrations can include IBKR imports, dividend tracking, tax reporting, crypto tracking, real-estate tracking, budgeting modules, and AI-assisted insights.
-
-## Final Design Principles
-
-- Google Sheets is the single source of truth.
-- Each piece of information is entered manually only once.
-- All aggregations and calculations occur in the backend.
-- The dashboard is read-only from an analytics perspective.
-- Market prices are retrieved automatically through APIs.
+- Google Sheets is the single source of truth, and each piece of information is entered once.
+- All aggregation and calculation happens on the server, in pure analytics functions.
+- The dashboards are read-only: nothing derived by the app is written back to the workbook.
+- Market data comes from local files refreshed by an explicit command.
 - Asset-allocation targets are stored historically as a time series.
-- The architecture must remain maintainable for decades with minimal manual effort.
-# nw
+- The code stays small and linear so it remains maintainable for decades with little effort.
