@@ -37,5 +37,12 @@ assert.equal(histogram[0]?.categories.Rent, 1_000);
 const moving = buildExpenseMovingAverage(report.expenseTransactions, 2, report.rangeStart, report.rangeEnd);
 assert.equal(moving[20]?.categories.Housing, 500);
 assert.equal(moving[20]?.categories.Health, 150);
+const longMovingAverage = buildExpenseMovingAverage(
+  report.expenseTransactions,
+  1_000_000,
+  report.rangeStart,
+  report.rangeEnd,
+);
+assert.equal(longMovingAverage[longMovingAverage.length - 1]?.categories.Housing, 1_000 / 59);
 
 console.log("cashflow analytics tests passed");

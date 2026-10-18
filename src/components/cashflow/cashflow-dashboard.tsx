@@ -155,6 +155,12 @@ function selectedDays(start: string, end: string, month: string) {
   return days;
 }
 
+function dateDaysAgo(date: string, days: number) {
+  const result = new Date(`${date}T00:00:00Z`);
+  result.setUTCDate(result.getUTCDate() - days);
+  return result.toISOString().slice(0, 10);
+}
+
 function availableReportMonths(report: CashflowReport, reportingDate: string) {
   const currentMonth = reportingDate.slice(0, 7);
   return report.periods.filter((period) =>
@@ -524,25 +530,32 @@ export function CashflowDashboard({
     }
     return months;
   }, [filteredExpenses, expenseAggregation]);
-  const movingAverageByMonth = useMemo(() => {
-    const months = new Map<string, Record<string, number>>();
-    for (const period of buildExpenseMovingAverage(
-      filteredExpenses,
-      movingAverageDays,
-      insightReport.rangeStart,
-      insightReport.rangeEnd,
-    )) {
-      if (period.period <= cutoff)
-        months.set(`${period.period.slice(0, 7)}-01`, period.categories);
-    }
-    return months;
-  }, [
-    filteredExpenses,
+  const movingAverageCategories = [
+    ...new Set(insightReport.expenseTransactions.map((expense) => expense.parentCategory)),
+  ].sort();
+  const firstExpenseDate = insightReport.expenseTransactions
+    .map((expense) => expense.date)
+    .sort()[0];
+  const requestedMovingAverageStart = dateDaysAgo(cutoff, movingAverageDays - 1);
+  const movingAverageStart = firstExpenseDate && firstExpenseDate > requestedMovingAverageStart
+    ? firstExpenseDate
+    : requestedMovingAverageStart;
+  const movingAverageSeries = buildExpenseMovingAverage(
+    insightReport.expenseTransactions,
     movingAverageDays,
-    insightReport.rangeStart,
-    insightReport.rangeEnd,
+    movingAverageStart,
     cutoff,
-  ]);
+  );
+  const movingAverageData = movingAverageSeries.map((period) => ({
+    period: period.period,
+    label: period.period,
+    ...Object.fromEntries(
+      movingAverageCategories.map((category, index) => [
+        `moving-average-${index}`,
+        period.categories[category] ?? null,
+      ]),
+    ),
+  }));
   const histogramData = insightPeriodData.map((period) => {
     const categories = histogramByMonth.get(period.period);
     return {
@@ -552,13 +565,6 @@ export function CashflowDashboard({
       ),
     };
   });
-  const movingAverageData = insightPeriodData.map((period) => ({
-    ...period,
-    categories: movingAverageByMonth.get(period.period) ?? {},
-  }));
-  const movingAverageCategories = [
-    ...new Set(filteredExpenses.map((expense) => expense.parentCategory)),
-  ].sort();
   const metricPeriods = insightPeriodData.map((period) => ({
     ...period,
     essentialToSalary: period.salary
@@ -605,6 +611,29 @@ export function CashflowDashboard({
   const daysInSelection = hasValidRange
     ? selectedDays(insightRangeStart, insightRangeEnd, selectedMonth)
     : 0;
+  const effectiveMovingAverageDays = selectedDays(
+    movingAverageStart,
+    cutoff,
+    "all",
+  );
+  const movingAverageExpenses = insightReport.expenseTransactions.filter(
+    (expense) => expense.date >= movingAverageStart && expense.date <= cutoff,
+  );
+  const movingAverageTotalExpenses = movingAverageExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0,
+  );
+  const movingAverageDaily = (total: number) =>
+    effectiveMovingAverageDays === 0 ? null : total / effectiveMovingAverageDays;
+  const movingAverageSum = (
+    predicate: (expense: (typeof movingAverageExpenses)[number]) => boolean,
+  ) => movingAverageExpenses
+    .filter(predicate)
+    .reduce((sum, expense) => sum + expense.amount, 0);
+  const movingAverageCategoryTotal = (category: string) =>
+    movingAverageExpenses
+      .filter((expense) => expense.parentCategory === category)
+      .reduce((sum, expense) => sum + expense.amount, 0);
 
   return (
     <div className="space-y-10">
@@ -1481,9 +1510,7 @@ export function CashflowDashboard({
                     <Line
                       key={category}
                       type="monotone"
-                      dataKey={(period: (typeof movingAverageData)[number]) =>
-                        period.categories[category] ?? null
-                      }
+                      dataKey={`moving-average-${index}`}
                       name={category}
                       hide={hiddenMovingAverageCategories.has(category)}
                       stroke={categoryColors[index % categoryColors.length]}
@@ -1515,19 +1542,13 @@ export function CashflowDashboard({
                     </th>
                     <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                       {formatMoneyToInteger(
-                        movingAverageData
-                          .filter((period) => period.period <= cutoff)
-                          .at(-1)?.categories[category] ?? null,
+                        movingAverageDaily(movingAverageCategoryTotal(category)),
                       )}{" "}
                       {insightCurrency}
                     </td>
                     <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                       {formatMoneyToInteger(
-                        filteredExpenses
-                          .filter(
-                            (expense) => expense.parentCategory === category,
-                          )
-                          .reduce((sum, expense) => sum + expense.amount, 0),
+                        movingAverageCategoryTotal(category),
                       )}{" "}
                       {insightCurrency}
                     </td>
@@ -1539,14 +1560,12 @@ export function CashflowDashboard({
                   </th>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      daysInSelection === 0
-                        ? null
-                        : filteredTotalExpenses / daysInSelection,
+                      movingAverageDaily(movingAverageTotalExpenses),
                     )}{" "}
                     {insightCurrency}
                   </td>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
-                    {formatMoneyToInteger(filteredTotalExpenses)}{" "}
+                    {formatMoneyToInteger(movingAverageTotalExpenses)}{" "}
                     {insightCurrency}
                   </td>
                 </tr>
@@ -1556,21 +1575,17 @@ export function CashflowDashboard({
                   </th>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      daysInSelection === 0
-                        ? null
-                        : filteredExpenses
-                            .filter(
-                              (expense) =>
-                                expense.category.toLowerCase() !== "rent",
-                            )
-                            .reduce((sum, expense) => sum + expense.amount, 0) /
-                            daysInSelection,
+                      movingAverageDaily(
+                        movingAverageSum(
+                          (expense) => expense.category.toLowerCase() !== "rent",
+                        ),
+                      ),
                     )}{" "}
                     {insightCurrency}
                   </td>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      filteredExpenses
+                      movingAverageExpenses
                         .filter(
                           (expense) =>
                             expense.category.toLowerCase() !== "rent",
@@ -1586,18 +1601,15 @@ export function CashflowDashboard({
                   </th>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      daysInSelection === 0
-                        ? null
-                        : filteredExpenses
-                            .filter((expense) => expense.isEssential)
-                            .reduce((sum, expense) => sum + expense.amount, 0) /
-                            daysInSelection,
+                      movingAverageDaily(
+                        movingAverageSum((expense) => expense.isEssential),
+                      ),
                     )}{" "}
                     {insightCurrency}
                   </td>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      filteredExpenses
+                      movingAverageExpenses
                         .filter((expense) => expense.isEssential)
                         .reduce((sum, expense) => sum + expense.amount, 0),
                     )}{" "}
@@ -1610,18 +1622,15 @@ export function CashflowDashboard({
                   </th>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      daysInSelection === 0
-                        ? null
-                        : filteredExpenses
-                            .filter((expense) => expense.isRecurring)
-                            .reduce((sum, expense) => sum + expense.amount, 0) /
-                            daysInSelection,
+                      movingAverageDaily(
+                        movingAverageSum((expense) => expense.isRecurring),
+                      ),
                     )}{" "}
                     {insightCurrency}
                   </td>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      filteredExpenses
+                      movingAverageExpenses
                         .filter((expense) => expense.isRecurring)
                         .reduce((sum, expense) => sum + expense.amount, 0),
                     )}{" "}
@@ -1634,18 +1643,15 @@ export function CashflowDashboard({
                   </th>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      daysInSelection === 0
-                        ? null
-                        : filteredExpenses
-                            .filter((expense) => !expense.isEssential)
-                            .reduce((sum, expense) => sum + expense.amount, 0) /
-                            daysInSelection,
+                      movingAverageDaily(
+                        movingAverageSum((expense) => !expense.isEssential),
+                      ),
                     )}{" "}
                     {insightCurrency}
                   </td>
                   <td className="border border-zinc-300 px-2 py-1 text-right tabular-nums">
                     {formatMoneyToInteger(
-                      filteredExpenses
+                      movingAverageExpenses
                         .filter((expense) => !expense.isEssential)
                         .reduce((sum, expense) => sum + expense.amount, 0),
                     )}{" "}

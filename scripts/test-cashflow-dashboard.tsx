@@ -57,4 +57,7 @@ for (const source of [report, buildCashflowReport([], [])]) {
   }
 }
 assert.equal(renderReport(report), html);
+
+const movingWindowHtml = renderReport(report, "2026-03-15");
+assert.match(movingWindowHtml, /Moving average expenses by parent category/);
 console.log("cashflow dashboard render tests passed");
