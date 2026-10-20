@@ -155,6 +155,7 @@ When a file's last date is before today, `prices.ts` requests the missing days f
 
 - **Totals** are computed independently in each report currency: the sum of all non-null converted values of the period, split into financial instruments, cash and other assets. A total is `null` only when no asset has a value. Missing values are skipped, not counted as zero, so a missing price understates a total; the warning says so.
 - **Change rows** compare each period with the previous one in the first report currency: absolute change, and percentage change when the previous total is non-zero. Current is compared with the last valued period.
+- **Summary table columns** (`netWorthYearColumns`): always January to December of the year chosen in the dropdown, one column per month. A month shows the report period dated in it, or `—` when there is none (a gap in the `assets` columns, a year before the first period, months after the latest reported one). The current period is a separate `Current` column after December, shown only when the current date is in the selected year; it never fills a month column. The change rows keep comparing each period with the previous report period, not with the previous calendar month.
 - **YTD %** per instrument: the dividend-adjusted close from the first trading day of the year to the latest close, with the FX rate of the first day and the latest FX rate, in the selected currency. It is `null` for cash and manual assets.
 - **Growth sources** (per period, per currency):
   - *Salary*: income transactions categorized `salary` dated in (previous period, period].
@@ -200,7 +201,7 @@ where $w$ is the fraction of the interval for which a flow was invested (a flow 
 
 ### Cashflow summary table
 
-- Shows January to December of the selected year (the latest transaction year by default) with a Total column and a Monthly avg column.
+- Always shows all twelve months, January to December, of the year chosen in the dropdown (the latest transaction year by default), with a Total column and a Monthly avg column. Months without data show `—`; the date-range and currency filters never change the columns.
 - Totals sum the months that have data. The total savings rate is total savings over total income.
 - Monthly averages cover the months up to the previous month (the current month is still in progress); months in that window without data count as zero. The savings-rate average is the mean of the monthly rates that exist.
 - Rows: income by category, expenses by parent category, two "no rent" variants, expenses, savings and savings rate.
@@ -225,7 +226,7 @@ The insights section works on the categorized expense transactions of the select
 
 ## Frontend
 
-- **Net worth.** Header with the current net worth in the selected currency; trend chart with currency buttons, date-range filters and the change since the first period; the asset table (instruments, cash and other assets with subtotals, totals in every report currency, absolute and percentage change, a year selector and the YTD column); the benchmark comparison with contribution markers and the methodology dialog; the growth sources chart with an optional summary table; the hall of fame; net worth in all currencies on one axis. The range filter applies to the charts, not to the table (its own year selector) or the hall of fame.
+- **Net worth.** Header with the current net worth in the selected currency; trend chart with currency buttons, date-range filters and the change since the first period; the asset table (instruments, cash and other assets with subtotals, totals in every report currency, absolute and percentage change, a year selector that picks the year of its fixed January–December columns, and the YTD column); the benchmark comparison with contribution markers and the methodology dialog; the growth sources chart with an optional summary table; the hall of fame; net worth in all currencies on one axis. The range filter applies to the charts, not to the table (its own year selector) or the hall of fame.
 - **Cashflow.** Currency buttons and the date range at the top; monthly income, expenses and salary trend; the summary table; the expense insights; the historical expenses chart.
 - **Conventions** (STYLE.MD): plain numbers without currency symbols (the currency appears in headings, total rows and tooltips), `—` for missing values, grey-bordered tables with a light-grey header, no CSS animations, restrained hover tooltips.
 - **Responsive behaviour.** Charts use Recharts `ResponsiveContainer`. Wide tables have a minimum width per period column and scroll horizontally inside their frame on narrow screens. The server passes the reporting date to the cashflow dashboard so the first render and hydration agree.

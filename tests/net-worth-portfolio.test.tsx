@@ -27,6 +27,17 @@ describe("NetWorthPortfolio", () => {
     assert.match(html, />1,300<\/td>/);
   });
 
+  it("shows January to December of the selected year plus the current period, whatever data exists", () => {
+    const year = report.periods.at(-1)!.slice(2, 4);
+    const header = html.match(/<thead[\s\S]*?<\/thead>/)![0];
+    const months = [...header.matchAll(/<th[^>]*>([A-Z][a-z]{2,3})-(\d{2})<\/th>/g)];
+    assert.equal(months.length, 12);
+    assert.ok(months.every((match) => match[2] === year));
+    assert.match(months[0][1], /^Jan/);
+    assert.match(months[11][1], /^Dec/);
+    assert.match(header, /<th[^>]*>Current<\/th>\s*<\/tr>/);
+  });
+
   it("totals every currency and the first currency's changes, with plain numbers", () => {
     assert.equal((html.match(/>Total<\/th>/g) ?? []).length, 2);
     for (const label of ["Abs. change", "% change"]) assert.match(html, new RegExp(`>${label}<`));

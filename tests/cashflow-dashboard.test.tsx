@@ -40,6 +40,15 @@ describe("CashflowDashboard", () => {
     assert.match(html, /Sep(t)?-26/, "ICU versions differ on Sep / Sept");
   });
 
+  it("always shows twelve month columns in the summary, however little data the report has", () => {
+    const single = buildCashflowReport([{ date: "2026-03-10", type: "income", amount: 100, category: "salary" }], categories);
+    for (const source of [report, single, buildCashflowReport([], [])]) {
+      const summary = renderReport(source).match(/<table[\s\S]*?<\/table>/)![0];
+      const header = summary.match(/<thead[\s\S]*?<\/thead>/)![0];
+      assert.equal((header.match(/<th[^>]*>[A-Z][a-z]{2,3}-26<\/th>/g) ?? []).length, 12);
+    }
+  });
+
   it("shows totals, parent-category rows and the unclassified-expense note", () => {
     assert.match(html, />1,165</, "the table's expense total includes the unclassified 40");
     assert.match(html, /1,125 EUR/, "the insight tile counts categorised expenses only");

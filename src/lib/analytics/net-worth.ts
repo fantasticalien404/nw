@@ -1,3 +1,4 @@
+import { monthStarts } from "@/lib/dates";
 import type { ValuedNetWorth } from "@/types/net-worth";
 import type { AssetDatatype, ConvertedCashflowTransaction } from "@/types/workbook";
 import { isSalary } from "./cashflow";
@@ -26,6 +27,37 @@ export type NetWorthReport = {
   percentageChanges: Array<number | null>;
   warnings: string[];
 };
+
+/** One column of the summary table. */
+export type NetWorthColumn = {
+  /** Unique within a table. */
+  key: string;
+  /** First day of the month; the current column carries the current date. */
+  date: string;
+  /** Index into the report's periods; null for a month without a report period. */
+  index: number | null;
+  isCurrent: boolean;
+};
+
+/**
+ * Columns of the summary table for `year`: always January to December, with an empty column for every month that
+ * has no report period, followed by the current period when its date falls in `year`. The last report period is the
+ * current one; it never fills a month column.
+ */
+export function netWorthYearColumns({ periods }: Pick<NetWorthReport, "periods">, year: string): NetWorthColumn[] {
+  const currentIndex = periods.length - 1;
+  const indexByMonth = new Map(periods.slice(0, currentIndex).map((period, index) => [period.slice(0, 7), index]));
+  const columns = monthStarts(`${year}-01-01`, `${year}-12-31`).map((month): NetWorthColumn => ({
+    key: month,
+    date: month,
+    index: indexByMonth.get(month.slice(0, 7)) ?? null,
+    isCurrent: false,
+  }));
+
+  const current = periods[currentIndex];
+  if (current?.startsWith(year)) columns.push({ key: "current", date: current, index: currentIndex, isCurrent: true });
+  return columns;
+}
 
 export type NetWorthGrowthPoint = {
   period: string;

@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { tableCell, tableHead } from "@/components/ui/table-styles";
-import type { NetWorthReport, NetWorthRow } from "@/lib/analytics/net-worth";
+import { netWorthYearColumns, type NetWorthColumn, type NetWorthReport, type NetWorthRow } from "@/lib/analytics/net-worth";
 import { formatMoney, formatMonthDash, formatPercentPoints } from "@/lib/format";
-
-/** The report periods shown for the selected year. */
-type Column = { index: number; period: string };
 
 // Fixed label columns (w-56 + w-20 + w-16 + w-16 = 432px) plus a minimum width per period: narrow screens scroll the table.
 const LABEL_COLUMNS_WIDTH = 432;
 const PERIOD_COLUMN_WIDTH = 68;
+
+/** The value a column shows; months without a report period are empty. */
+function valueAt(values: Array<number | null>, column: NetWorthColumn) {
+  return column.index === null ? null : values[column.index] ?? null;
+}
 
 function ytdPerformanceColor(value: number | null) {
   if (value === null || value === 0) return "text-black";
@@ -32,7 +34,7 @@ function AssetName({ row }: { row: NetWorthRow }) {
 function AssetGroup({ label, rows, columns, currency, totals }: {
   label: string;
   rows: NetWorthRow[];
-  columns: Column[];
+  columns: NetWorthColumn[];
   currency: string;
   totals: Array<number | null>;
 }) {
@@ -44,9 +46,9 @@ function AssetGroup({ label, rows, columns, currency, totals }: {
     <tbody>
       <tr className={tableHead}>
         <th colSpan={4} className={tableCell}>{label}</th>
-        {columns.map(({ index, period }) => (
-          <td key={period} className={`${tableCell} text-right tabular-nums text-black`}>
-            {formatMoney(totals[index] ?? null)}
+        {columns.map((column) => (
+          <td key={column.key} className={`${tableCell} text-right tabular-nums text-black`}>
+            {formatMoney(valueAt(totals, column))}
           </td>
         ))}
       </tr>
@@ -63,9 +65,9 @@ function AssetGroup({ label, rows, columns, currency, totals }: {
             <td className={`${tableCell} text-right tabular-nums ${ytdPerformanceColor(ytdPerformance)}`}>
               {formatPercentPoints(ytdPerformance)}
             </td>
-            {columns.map(({ index, period }) => (
-              <td key={period} className={`${tableCell} text-right tabular-nums text-black`}>
-                {formatMoney(row.values[index] ?? null)}
+            {columns.map((column) => (
+              <td key={column.key} className={`${tableCell} text-right tabular-nums text-black`}>
+                {formatMoney(valueAt(row.values, column))}
               </td>
             ))}
           </tr>
@@ -79,7 +81,7 @@ function TotalRow({ label, currency, values, columns, percentage = false }: {
   label: string;
   currency: string;
   values: Array<number | null>;
-  columns: Column[];
+  columns: NetWorthColumn[];
   percentage?: boolean;
 }) {
   return (
@@ -90,9 +92,9 @@ function TotalRow({ label, currency, values, columns, percentage = false }: {
       <td className={tableCell} />
       <td className={`${tableCell} text-zinc-700`}>{currency}</td>
       <td className={tableCell} />
-      {columns.map(({ index, period }) => (
-        <td key={period} className={`${tableCell} text-right tabular-nums`}>
-          {percentage ? formatPercentPoints(values[index] ?? null) : formatMoney(values[index] ?? null)}
+      {columns.map((column) => (
+        <td key={column.key} className={`${tableCell} text-right tabular-nums`}>
+          {percentage ? formatPercentPoints(valueAt(values, column)) : formatMoney(valueAt(values, column))}
         </td>
       ))}
     </tr>
@@ -102,7 +104,7 @@ function TotalRow({ label, currency, values, columns, percentage = false }: {
 export function NetWorthTable({ report, currencyIndex }: { report: NetWorthReport; currencyIndex: number }) {
   const years = [...new Set(report.periods.map((period) => period.slice(0, 4)))];
   const [selectedYear, setSelectedYear] = useState(years.at(-1) ?? "");
-  const columns = report.periods.flatMap((period, index) => (period.startsWith(selectedYear) ? [{ index, period }] : []));
+  const columns = netWorthYearColumns(report, selectedYear);
   const selectedCurrency = report.currencies[currencyIndex] ?? report.currencies[0];
 
   return (
@@ -126,7 +128,7 @@ export function NetWorthTable({ report, currencyIndex }: { report: NetWorthRepor
           <col className="w-20" />
           <col className="w-16" />
           <col className="w-16" />
-          {columns.map(({ period }) => <col key={period} />)}
+          {columns.map(({ key }) => <col key={key} />)}
         </colgroup>
         <thead className={tableHead}>
           <tr>
@@ -134,9 +136,9 @@ export function NetWorthTable({ report, currencyIndex }: { report: NetWorthRepor
             <th className={tableCell}>Ticker</th>
             <th className={tableCell}>Currency</th>
             <th className={`${tableCell} text-right`}>YTD %</th>
-            {columns.map(({ period }) => (
-              <th key={period} className={`${tableCell} text-right`}>
-                {period === report.periods.at(-1) ? "Current" : formatMonthDash(period)}
+            {columns.map(({ key, date, isCurrent }) => (
+              <th key={key} className={`${tableCell} text-right`}>
+                {isCurrent ? "Current" : formatMonthDash(date)}
               </th>
             ))}
           </tr>

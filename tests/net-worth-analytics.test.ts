@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildNetWorthGrowthSeries, buildNetWorthReport, type NetWorthReport } from "@/lib/analytics/net-worth";
+import { buildNetWorthGrowthSeries, buildNetWorthReport, netWorthYearColumns, type NetWorthReport } from "@/lib/analytics/net-worth";
 import type { ValuedAsset, ValuedNetWorth } from "@/types/net-worth";
 
 function asset(overrides: Partial<ValuedAsset> & Pick<ValuedAsset, "asset" | "datatype" | "convertedValues">): ValuedAsset {
@@ -72,6 +72,41 @@ describe("buildNetWorthReport", () => {
   it("handles a workbook without assets", () => {
     const empty = buildNetWorthReport({ currencies: ["CHF"], periods: ["a"], assets: [], warnings: [] });
     assert.deepEqual(empty.totals, [[null]]);
+  });
+});
+
+describe("netWorthYearColumns", () => {
+  const periods = ["2025-11-30", "2025-12-31", "2026-01-31", "2026-03-31", "2026-05-20"];
+
+  it("always spans January to December and leaves months without a report period empty", () => {
+    const columns = netWorthYearColumns({ periods }, "2026").filter((column) => !column.isCurrent);
+    assert.equal(columns.length, 12);
+    assert.deepEqual(columns.map((column) => column.date.slice(0, 7)), [
+      "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06",
+      "2026-07", "2026-08", "2026-09", "2026-10", "2026-11", "2026-12",
+    ]);
+    assert.deepEqual(columns.map((column) => column.index), [2, null, 3, null, null, null, null, null, null, null, null, null]);
+  });
+
+  it("appends the current period only for the year it falls in, without taking over its month", () => {
+    const current = netWorthYearColumns({ periods }, "2026").at(-1);
+    assert.deepEqual(current, { key: "current", date: "2026-05-20", index: 4, isCurrent: true });
+
+    const past = netWorthYearColumns({ periods }, "2025");
+    assert.equal(past.length, 12);
+    assert.ok(past.every((column) => !column.isCurrent));
+    assert.deepEqual(past.map((column) => column.index), [null, null, null, null, null, null, null, null, null, null, 0, 1]);
+  });
+
+  it("keeps twelve month columns for a year without any report period", () => {
+    const columns = netWorthYearColumns({ periods }, "2024");
+    assert.equal(columns.length, 12);
+    assert.ok(columns.every((column) => column.index === null));
+  });
+
+  it("gives every column a unique key, even when the current date is the first of a month", () => {
+    const columns = netWorthYearColumns({ periods: ["2026-01-31", "2026-05-01"] }, "2026");
+    assert.equal(new Set(columns.map((column) => column.key)).size, columns.length);
   });
 });
 
