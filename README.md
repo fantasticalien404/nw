@@ -1,4 +1,4 @@
-# Personal Wealth Dashboard
+# Private cashflow and net-worth breakdown
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js 20.9+](https://img.shields.io/badge/node-%3E%3D20.9-339933.svg)](https://nodejs.org)
@@ -8,7 +8,7 @@
 A private dashboard for your net worth and your cashflow. 
 <br/>Your data lives and stays in your Google Sheet. The app reads the sheet, adds prices and exchange rates saved on your computer, and shows tables and charts.
 
-Developed by [Giacomo Maggiore](https://giacomomaggiore.com). Open source, [MIT license](LICENSE).
+Developed by <a href= "https://giacomomaggiore.com" target="_blank">Giacomo Maggiore</a>. Open source, [MIT license](LICENSE).
 
 ![Net worth dashboard: trend, asset table and benchmark comparison](docs/images/networth.png)
 
