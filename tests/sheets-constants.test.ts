@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { DEFAULT_APP_SETTINGS, parseAppSettings } from "@/lib/sheets/app-settings";
 import { parseConstants } from "@/lib/sheets/parse";
 
-describe("costants parsing", () => {
+describe("constants parsing", () => {
   it("normalises currency values but keeps text values as typed", () => {
     const constants = parseConstants([
       ["currency_1", " dol "],

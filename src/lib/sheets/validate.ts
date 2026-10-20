@@ -10,7 +10,7 @@ export type TabCheck = { tab: string; summary: string; errors: string[] };
 export type WorkbookTabs = {
   cashflow: SheetRows;
   assets: SheetRows;
-  costants: SheetRows;
+  constants: SheetRows;
   saa: SheetRows;
   categories: SheetRows;
   metadata: SheetRows;
@@ -97,11 +97,11 @@ export function checkAssetsTab(rows: SheetRows): TabCheck {
 }
 
 export function checkConstantsTab(rows: SheetRows): TabCheck {
-  const errors = rows.length === 0 ? ["The costants tab is empty."] : [];
+  const errors = rows.length === 0 ? ["The constants tab is empty."] : [];
   for (const [index, [key, value]] of rows.entries()) {
-    if (!cellText(key) || value === "" || value === undefined) errors.push(`costants row ${index + 1}: key and value are required.`);
+    if (!cellText(key) || value === "" || value === undefined) errors.push(`constants row ${index + 1}: key and value are required.`);
   }
-  return { tab: "costants", summary: `${rows.length} constants`, errors };
+  return { tab: "constants", summary: `${rows.length} constants`, errors };
 }
 
 export function checkSaaTab(rows: SheetRows): TabCheck {
@@ -167,7 +167,7 @@ export function checkWorkbook(tabs: WorkbookTabs): TabCheck[] {
   return [
     checkCashflowTab(tabs.cashflow),
     checkAssetsTab(tabs.assets),
-    checkConstantsTab(tabs.costants),
+    checkConstantsTab(tabs.constants),
     checkSaaTab(tabs.saa),
     checkCategoriesTab(tabs.categories, tabs.cashflow),
     checkMetadataTab(tabs.metadata),

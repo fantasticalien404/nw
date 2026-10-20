@@ -1,4 +1,4 @@
-// Page metadata kept in the `costants` tab (`APP_NAME`, `APP_DESCRIPTION`).
+// Page metadata kept in the `constants` tab (`APP_NAME`, `APP_DESCRIPTION`).
 import { readSheetValues, type SheetRows } from "./client";
 import { parseConstants } from "./parse";
 
@@ -19,6 +19,6 @@ export function parseAppSettings(constantRows: SheetRows): AppSettings {
 }
 
 export async function loadAppSettings(): Promise<AppSettings> {
-  const [constantRows] = await readSheetValues("costants!A:B");
+  const [constantRows] = await readSheetValues("constants!A:B");
   return parseAppSettings(constantRows);
 }

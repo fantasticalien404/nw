@@ -29,7 +29,7 @@ export function hasHeaders(actual: string[], expected: string[]) {
   return actual.join("|") === expected.join("|");
 }
 
-/** `costants` tab: key in column A, value in column B. Keys are upper-cased; only `CURRENCY_*` values are normalised, text keeps its case. */
+/** `constants` tab: key in column A, value in column B. Keys are upper-cased; only `CURRENCY_*` values are normalised, text keeps its case. */
 export function parseConstants(rows: SheetRows) {
   return new Map(
     rows.map(([key, value]) => {

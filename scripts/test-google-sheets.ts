@@ -14,20 +14,20 @@ for (const variable of ["GOOGLE_SHEET_ID", "GOOGLE_CLIENT_EMAIL", "GOOGLE_PRIVAT
 }
 
 async function main() {
-  const [cashflow, assets, costants, saa, categories, metadata] = await readSheetValues(
+  const [cashflow, assets, constants, saa, categories, metadata] = await readSheetValues(
     "cashflow!A:H",
     "assets!A:Z",
-    "costants!A:B",
+    "constants!A:B",
     "saa!A:Z",
     "categories!A:D",
     "metadata!A:F",
   );
-  const checks: TabCheck[] = checkWorkbook({ cashflow, assets, costants, saa, categories, metadata });
+  const checks: TabCheck[] = checkWorkbook({ cashflow, assets, constants, saa, categories, metadata });
 
   // The app's own parsers must accept the workbook too, so this check cannot pass while the pages fail.
   try {
-    parseCashflowWorkbook({ cashflowRows: cashflow, categoryRows: categories, constantRows: costants });
-    parseNetWorthWorkbook({ assetRows: assets, metadataRows: metadata, constantRows: costants });
+    parseCashflowWorkbook({ cashflowRows: cashflow, categoryRows: categories, constantRows: constants });
+    parseNetWorthWorkbook({ assetRows: assets, metadataRows: metadata, constantRows: constants });
   } catch (error) {
     checks.push({ tab: "app parsers", summary: "", errors: [error instanceof Error ? error.message : String(error)] });
   }

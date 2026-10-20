@@ -73,19 +73,19 @@ function parseTransactions(rows: SheetRows, categoryNames: Set<string>) {
   });
 }
 
-/** Reporting currencies are `CURRENCY_1..3` from `costants`: valid codes only, unique, in order. */
+/** Reporting currencies are `CURRENCY_1..3` from `constants`: valid codes only, unique, in order. */
 function parseReportingCurrencies(constantRows: SheetRows) {
   const constants = parseConstants(constantRows);
   const currencies = ["CURRENCY_1", "CURRENCY_2", "CURRENCY_3"]
     .map((key) => constants.get(key))
     .filter((currency): currency is string => currency !== undefined && isCurrencyCode(currency));
   if (currencies.length === 0) {
-    throw new Error("Set CURRENCY_1 in the costants tab.");
+    throw new Error("Set CURRENCY_1 in the constants tab.");
   }
   return [...new Set(currencies)];
 }
 
-/** Validates and normalises the raw `cashflow`, `categories` and `costants` tabs. */
+/** Validates and normalises the raw `cashflow`, `categories` and `constants` tabs. */
 export function parseCashflowWorkbook({ cashflowRows, categoryRows, constantRows }: CashflowTabs): CashflowWorkbook {
   const [cashflowHeaders = [], ...transactionRows] = cashflowRows;
   const [categoryHeaders = [], ...categoryDataRows] = categoryRows;
@@ -107,6 +107,6 @@ export function parseCashflowWorkbook({ cashflowRows, categoryRows, constantRows
 }
 
 export async function loadCashflowWorkbook(): Promise<CashflowWorkbook> {
-  const [cashflowRows, categoryRows, constantRows] = await readSheetValues("cashflow!A:H", "categories!A:D", "costants!A:B");
+  const [cashflowRows, categoryRows, constantRows] = await readSheetValues("cashflow!A:H", "categories!A:D", "constants!A:B");
   return parseCashflowWorkbook({ cashflowRows, categoryRows, constantRows });
 }

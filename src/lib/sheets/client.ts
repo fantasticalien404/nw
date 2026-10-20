@@ -28,7 +28,7 @@ function getSheetsClient() {
   return { sheetId, sheets: google.sheets({ version: "v4", auth }) };
 }
 
-/** Raw cell values of one tab range; row 0 is the header row (the `costants` tab has none). */
+/** Raw cell values of one tab range; row 0 is the header row (the `constants` tab has none). */
 export type SheetRows = unknown[][];
 
 /** Reads several A1 ranges in parallel (read-only, unformatted values). One entry per range, in order. */

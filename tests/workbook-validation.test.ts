@@ -15,7 +15,7 @@ const cashflowHeader = ["DATE", "TYPE", "NAME", "AMOUNT", "CURRENCY", "CATEGORY"
 const valid: WorkbookTabs = {
   cashflow: [cashflowHeader, [46_037, "expense", "Landlord", 1000, "CHF", "Rent"], [46_038, "contribution", "Broker", 300, "EUR"]],
   assets: [["ASSET", "DATATYPE", "CURRENCY", "ACCOUNT", 46_023, 46_054], ["VT", "quantity", "USD", "IB", 10, 12], [], ["Cash", "cash", "EUR", "Bank", 5, ""]],
-  costants: [["CURRENCY_1", "CHF"], ["FIRE target", 1_500_000]],
+  constants: [["CURRENCY_1", "CHF"], ["FIRE target", 1_500_000]],
   saa: [["ASSET_CLASS", "INSTRUMENT", 46_023, 46_054], ["equities", "VT", 0.9, 0.8]],
   categories: [["CATEGORY", "PARENT_CATEGORY", "IS_ESSENTIAL", "IS_RECURRING"], ["Rent", "Housing", true, true]],
   metadata: [["TICKER", "DISPLAY_NAME", "FULL_NAME", "CURRENCY", "TER", "ISSUER"], ["VT", "", "Vanguard Total World", "USD", 0.07, "Vanguard"]],
@@ -77,10 +77,10 @@ describe("workbook validation", () => {
   });
 
   it("flags empty constants and rows without a key or value", () => {
-    assert.match(checkConstantsTab([]).errors[0], /costants tab is empty/);
+    assert.match(checkConstantsTab([]).errors[0], /constants tab is empty/);
     assert.deepEqual(checkConstantsTab([["CURRENCY_1", "CHF"], ["", 1], ["KEY", ""]]).errors, [
-      "costants row 2: key and value are required.",
-      "costants row 3: key and value are required.",
+      "constants row 2: key and value are required.",
+      "constants row 3: key and value are required.",
     ]);
   });
 

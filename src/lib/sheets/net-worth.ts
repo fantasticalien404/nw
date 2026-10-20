@@ -73,7 +73,7 @@ function parseReportCurrencies(constantRows: SheetRows) {
   const constants = parseConstants(constantRows);
   const primary = constants.get("CURRENCY_1");
   if (!primary) {
-    throw new Error("Set CURRENCY_1 in the costants tab.");
+    throw new Error("Set CURRENCY_1 in the constants tab.");
   }
 
   const candidates = [
@@ -86,7 +86,7 @@ function parseReportCurrencies(constantRows: SheetRows) {
   return [...new Set(supported)].slice(0, 3);
 }
 
-/** Validates and normalises the raw `assets`, `metadata` and `costants` tabs. */
+/** Validates and normalises the raw `assets`, `metadata` and `constants` tabs. */
 export function parseNetWorthWorkbook({ assetRows, metadataRows, constantRows }: NetWorthTabs): NetWorthWorkbook {
   const [headers = [], ...assetDataRows] = assetRows;
   const [metadataHeaders = [], ...metadataDataRows] = metadataRows;
@@ -105,6 +105,6 @@ export function parseNetWorthWorkbook({ assetRows, metadataRows, constantRows }:
 }
 
 export async function loadNetWorthWorkbook(): Promise<NetWorthWorkbook> {
-  const [assetRows, metadataRows, constantRows] = await readSheetValues("assets!A:Z", "metadata!A:F", "costants!A:B");
+  const [assetRows, metadataRows, constantRows] = await readSheetValues("assets!A:Z", "metadata!A:F", "constants!A:B");
   return parseNetWorthWorkbook({ assetRows, metadataRows, constantRows });
 }

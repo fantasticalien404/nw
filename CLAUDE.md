@@ -23,7 +23,7 @@ Tab names are lowercase and fixed:
 - `categories`
 - `metadata`
 - `saa`
-- `costants` (intentional spelling)
+- `constants`
 
 ### `cashflow`
 
@@ -65,7 +65,7 @@ Headers: `TICKER`, `DISPLAY_NAME`, `FULL_NAME`, `CURRENCY`, `TER`, `ISSUER`.
 
 First headers: `ASSET_CLASS`, `INSTRUMENT`; remaining columns are ascending reporting-period dates. Values are non-negative target percentages. Targets do not need to total 100%; calculate drift independently for each target.
 
-### `costants`
+### `constants`
 
 No header row. Column A is the key and column B is the value. Keys are unique, upper-case, and read case-insensitively.
 
@@ -78,7 +78,7 @@ No header row. Column A is the key and column B is the value. Keys are unique, u
 | `APP_DESCRIPTION` | `<meta name="description">`. Read by the app (default `Private personal-wealth dashboard`). |
 | `LOCALE` | `<html lang>`, for example `en`. Not read by the app yet. |
 
-`parseConstants` normalizes only `CURRENCY_*` values as currency codes; text values (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`) keep their case, except that emails are lower-cased when compared. `APP_NAME` and `APP_DESCRIPTION` are loaded by `loadCachedAppSettings` (`src/app/load-app-settings.ts`, `"use cache"` with `cacheLife("minutes")`); a failed read falls back to the defaults in `lib/sheets/app-settings.ts` so a Sheets outage never breaks page titles. `ALLOWED_EMAILS` and `LUCKY_SEED` are loaded by `loadCachedAccessSettings` (`src/lib/auth/access.ts`, same cache profile) and a failed read grants nobody access. Keep `costants` free of personal data other than the allowlist: `APP_NAME` and `APP_DESCRIPTION` end up in public HTML, so keep them generic. Robots/`noindex` and per-page titles are hard-coded, never read from the sheet.
+`parseConstants` normalizes only `CURRENCY_*` values as currency codes; text values (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`) keep their case, except that emails are lower-cased when compared. `APP_NAME` and `APP_DESCRIPTION` are loaded by `loadCachedAppSettings` (`src/app/load-app-settings.ts`, `"use cache"` with `cacheLife("minutes")`); a failed read falls back to the defaults in `lib/sheets/app-settings.ts` so a Sheets outage never breaks page titles. `ALLOWED_EMAILS` and `LUCKY_SEED` are loaded by `loadCachedAccessSettings` (`src/lib/auth/access.ts`, same cache profile) and a failed read grants nobody access. Keep `constants` free of personal data other than the allowlist: `APP_NAME` and `APP_DESCRIPTION` end up in public HTML, so keep them generic. Robots/`noindex` and per-page titles are hard-coded, never read from the sheet.
 
 ## Architecture and Methodology
 
@@ -96,10 +96,10 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 
 ### Implemented routes
 
-- `/networth`: parses `assets`, `metadata`, and `costants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and the asset summary table (fixed January–December columns, see Summary table layout).
+- `/networth`: parses `assets`, `metadata`, and `constants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and the asset summary table (fixed January–December columns, see Summary table layout).
 - `/saa`, `/montecarlo`, `/docs`, `/privacy`, `/ts`: empty "Coming soon" placeholders. `/privacy` (privacy policy) and `/ts` (terms of service) are linked from Google's consent screen; they are not in the navbar and need real text before the OAuth app is published.
 - `/api/auth/*`: Auth.js endpoints (`src/app/api/auth/[...nextauth]/route.ts`). There are no financial-data API routes yet.
-- `/` (`/cashflow` redirects to it): parses `cashflow`, `categories`, and `costants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
+- `/` (`/cashflow` redirects to it): parses `cashflow`, `categories`, and `constants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
 
 ### Calculation rules
 
@@ -166,7 +166,7 @@ The Sheets service account (server reads the workbook) and the OAuth client (use
 
 ### Allowlist
 
-Google OAuth only proves identity. Authorization is the allowlist, a comma-separated `ALLOWED_EMAILS` value in the `costants` tab (not in `.env.local`):
+Google OAuth only proves identity. Authorization is the allowlist, a comma-separated `ALLOWED_EMAILS` value in the `constants` tab (not in `.env.local`):
 
 - The server reads the allowlist with the service account when checking a session, never in the browser and never exposed to clients.
 - Trim and lower-case every allowlist entry and the session email; require a verified Google email. Grant real data only on an exact match.
@@ -254,5 +254,5 @@ Primary pages:
 - Run `npm run test:sheets` after changes to Sheets parsing or workbook validation.
 - Run `npm run lint` and `npm test` for code changes. Tests live in `tests/*.test.ts(x)` (`node:test` through `tsx`), use synthetic data only, and need no environment variables. Add or update a test with every parser, analytics, or market-data change.
 - Do not print or commit environment values, service-account keys, OAuth client secrets, or spreadsheet identifiers.
-- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Before deploying, set `DEMO_SALT`, fill `ALLOWED_EMAILS` (and optionally a long `LUCKY_SEED`) in `costants`, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
+- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Before deploying, set `DEMO_SALT`, fill `ALLOWED_EMAILS` (and optionally a long `LUCKY_SEED`) in `constants`, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
 - The root layout builds `<title>` and description from `APP_NAME` / `APP_DESCRIPTION`; each page exports its own `metadata.title`. Robots/`noindex` is hard-coded in `generateMetadata` (`robots: { index: false, follow: false }`). Environment changes need a restart of the dev server; `next start` additionally needs `AUTH_TRUST_HOST=true`.
