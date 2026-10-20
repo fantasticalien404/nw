@@ -3,6 +3,8 @@ import { today } from "@/lib/dates";
 import { connection } from "next/server";
 import { loadCashflowPage } from "./cashflow/load-cashflow-page";
 
+export const metadata = { title: "Cashflow" };
+
 export const instant = false;
 
 export default async function CashflowPage() {

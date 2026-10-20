@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
 const links = [
   { href: "/", label: "Cashflow" },
@@ -11,12 +12,13 @@ const links = [
   { href: "/docs", label: "Docs" },
 ];
 
-export function Navbar() {
+/** `profile` is a server component (session), passed in because this one is a client component. */
+export function Navbar({ profile }: { profile: ReactNode }) {
   const pathname = usePathname();
 
   return (
     <nav className="border-b border-zinc-100 bg-zinc-100" aria-label="Main navigation">
-      <div className="mx-auto flex w-full max-w-[1400px] gap-1 overflow-x-auto px-4 py-2 text-sm sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1400px] items-center gap-1 overflow-x-auto px-4 py-2 text-sm sm:px-6">
         {links.map((link) => (
           <Link
             key={link.href}
@@ -29,6 +31,7 @@ export function Navbar() {
             {link.label}
           </Link>
         ))}
+        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">{profile}</div>
       </div>
     </nav>
   );

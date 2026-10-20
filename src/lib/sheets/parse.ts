@@ -29,9 +29,14 @@ export function hasHeaders(actual: string[], expected: string[]) {
   return actual.join("|") === expected.join("|");
 }
 
-/** `costants` tab: key in column A, value in column B. Keys are upper-cased; values are normalised as currencies. */
+/** `costants` tab: key in column A, value in column B. Keys are upper-cased; only `CURRENCY_*` values are normalised, text keeps its case. */
 export function parseConstants(rows: SheetRows) {
-  return new Map(rows.map(([key, value]) => [cellText(key).toUpperCase(), normalizeCurrency(value)]));
+  return new Map(
+    rows.map(([key, value]) => {
+      const name = cellText(key).toUpperCase();
+      return [name, name.startsWith("CURRENCY_") ? normalizeCurrency(value) : cellText(value)];
+    }),
+  );
 }
 
 export function parseSheetDate(value: unknown, errorMessage: string) {

@@ -20,10 +20,13 @@ Enter data manually once, store it in a simple and transparent format, and let t
 | `/networth` dashboard | Implemented: trend, asset table, benchmark comparison, growth sources, hall of fame, net worth by currency |
 | Workbook parsing and contract validation | Implemented (`npm run test:sheets`) |
 | Market-data downloader and local price store | Implemented (`npm run download:market-data`); the app also tops up stale files at runtime (see [Market data](#market-data)) |
-| Test suite | 154 tests, synthetic data only (`npm test`) |
+| Test suite | 163 tests, synthetic data only (`npm test`) |
 | `/saa`, `/montecarlo`, `/docs` | Placeholders ("Coming soon") |
-| Authentication and demo mode | **Not implemented.** Do not deploy before adding Google OAuth with the allowlist (see CLAUDE.md) |
-| API routes | Not implemented; pages are server components that call the loaders directly |
+| `/privacy`, `/ts` | Empty placeholders ("Coming soon") for the privacy policy and the terms of service. Google's consent screen links to them; write the real text before publishing the app. They are not in the navbar |
+| Authentication | Google sign-in implemented (Auth.js, JWT session, no database); the navbar shows the profile picture with a green border when signed in and a red placeholder otherwise. **Nothing is restricted yet:** signed-in, signed-out and non-allowlisted users see the same pages. See [Authentication](#authentication) |
+| Allowlist and demo mode | **Not implemented.** Do not deploy with real data before `ALLOWED_EMAILS` is enforced and the demo mode exists (see [Tab 6](#tab-6-costants) and CLAUDE.md) |
+| Page metadata | Implemented: `APP_NAME` and `APP_DESCRIPTION` from `costants` set the site title and description (cached a few minutes; defaults if the read fails); each page adds its own title |
+| API routes | Only `/api/auth/*` (Auth.js). There are no financial-data endpoints; pages are server components that call the loaders directly |
 | Benchmark metrics (IRR, Sharpe, drawdown, ...) | Calculated in the analytics layer; not rendered yet |
 
 Known defects and the backlog live in [TODO.md](TODO.md). The agent instructions and the product contract live in [CLAUDE.md](CLAUDE.md); the visual rules in [STYLE.MD](STYLE.MD).
@@ -54,7 +57,7 @@ Rules that keep the layers apart:
 
 ### Request lifecycle
 
-1. The page calls `await connection()`, so it is rendered per request. There is no cache: every page load re-reads the workbook and the price files.
+1. The page calls `await connection()`, so it is rendered per request. There is no cache for financial data: every page load re-reads the workbook and the price files. Two things sit outside this: the root layout reads `APP_NAME` / `APP_DESCRIPTION` through a cached loader (`"use cache"`, refreshed after a few minutes), and the navbar reads the Google session cookie in its own `Suspense` boundary.
 2. The loader reads the needed tabs in parallel with one Sheets call per range and parses them into typed workbooks.
 3. A fresh market-data object is created for the request. It reads each price file at most once and answers every later lookup from memory.
 4. Workbook values are priced and converted, then the analytics build the reports.
@@ -66,6 +69,8 @@ Rules that keep the layers apart:
 | --- | --- |
 | `src/lib/sheets/client.ts` | Service-account Google Sheets client; reads A1 ranges with unformatted values (the only Sheets I/O) |
 | `src/lib/sheets/cashflow.ts`, `net-worth.ts`, `parse.ts` | Pure tab parsers and normalization (dates, currencies, headers, constants) |
+| `src/lib/sheets/app-settings.ts` | `APP_NAME` / `APP_DESCRIPTION` from `costants`, with defaults for blank or missing keys |
+| `src/lib/auth/auth.ts` | Auth.js configuration: Google provider, JWT sessions; exports `handlers`, `auth`, `signIn`, `signOut` |
 | `src/lib/sheets/validate.ts` | Contract checks behind `npm run test:sheets`; reports every problem with row numbers |
 | `src/lib/market-data/prices.ts` | Local price and FX store: reads files, optional top-up, price and FX lookups |
 | `src/lib/market-data/net-worth.ts` | Values every asset per period and currency; price changes for the growth sources |
@@ -80,8 +85,8 @@ Rules that keep the layers apart:
 | `src/lib/analytics/cashflow-insights.ts` | Calculations behind the expense filters and insight charts |
 | `src/lib/dates.ts`, `format.ts`, `sets.ts` | UTC date helpers, display formatting (plain numbers, `—` for missing), small set helper |
 | `src/types` | Domain types shared by the layers |
-| `src/app` | Routes, page loaders and the read-only server pages |
-| `src/components` | Tables and Recharts charts; `charts/chart-style.ts` holds the shared chart styling, `ui/` the shared filters |
+| `src/app` | Routes, page loaders and the read-only server pages; `layout.tsx` builds the site metadata, `load-app-settings.ts` caches the settings read, `api/auth/[...nextauth]/route.ts` serves the Auth.js endpoints |
+| `src/components` | Tables and Recharts charts; `charts/chart-style.ts` holds the shared chart styling, `ui/` the shared filters, the navbar and the session-aware `user-profile.tsx` |
 | `scripts` | `download-market-data.ts` (price store refresh) and `test-google-sheets.ts` (workbook validation) |
 | `tests` | The `node:test` suite and its synthetic fixtures |
 
@@ -135,9 +140,10 @@ When a file's last date is before today, `prices.ts` requests the missing days f
 
 ### Reading and parsing the workbook
 
-- Ranges read: `cashflow!A:H`, `categories!A:D`, `costants!A:B`, `assets!A:Z` (at most 22 reporting-period columns), `metadata!A:F`.
+- Ranges read: `cashflow!A:H`, `categories!A:D`, `costants!A:B`, `assets!A:Z` (at most 22 reporting-period columns), `metadata!A:F`. The root layout reads `costants!A:B` on its own for the site metadata.
 - Dates arrive as Google Sheets serial numbers and become ISO `YYYY-MM-DD` strings. Every date in the app is a UTC calendar day, never local time.
 - Headers are matched case-insensitively. The seventh `cashflow` header may be `CITY`, a legacy alias for `SUBCATEGORY`. `DOL` is accepted as a legacy alias for `USD`.
+- `costants` keys are upper-cased. Only `CURRENCY_*` values are normalized as currency codes (upper-case, `DOL` → `USD`); every other value is kept as typed.
 - Parsers throw on the first problem (for example an unknown category on a row); `test:sheets` reports all of them.
 - **Report currencies.** Cashflow: `CURRENCY_1..3` from `costants`, valid three-letter codes, unique, in order (at least `CURRENCY_1`). Net worth: `CURRENCY_1` first, then `CURRENCY_2` and `CURRENCY_3`, then `EUR`, `CHF`, `USD` (excluding duplicates) to fill up to three; only these three currencies are supported there.
 
@@ -306,13 +312,91 @@ Historical target allocations: one time series per instrument, so the policy can
 
 ### Tab 6: costants
 
-System-wide constants. Each row has a key in column A and its value in column B; there is no header row. `CURRENCY_1` is required; `CURRENCY_2` and `CURRENCY_3` are optional.
+System-wide constants. Each row has a key in column A and its value in column B; there is no header row. Keys are case-insensitive and must be unique (a repeated key overwrites the earlier row). `CURRENCY_1` is required; every other key is optional.
 
-| Key | Value |
+| Key | Value | Used by |
+| --- | --- | --- |
+| CURRENCY_1 | CHF | Primary report currency (required). `CURRENCY_2` and `CURRENCY_3` are optional |
+| CURRENCY_2 | EUR | Second report currency |
+| CURRENCY_3 | USD | Third report currency |
+| APP_NAME | Net Worth | Site name: default page title and the suffix of every page title (`Cashflow · Net Worth`). Read by the app |
+| APP_DESCRIPTION | Private personal-wealth dashboard | `<meta name="description">`. Read by the app |
+| ALLOWED_EMAILS | you@gmail.com, partner@gmail.com | Access list. **Not read by the app yet** |
+| LOCALE | en | `<html lang>`. **Not read by the app yet** |
+
+- **`APP_NAME` and `APP_DESCRIPTION`** are cached for a few minutes, so a sheet edit takes that long to appear. A blank or missing key falls back to `Net Worth` / `Private personal-wealth dashboard`, and so does a failed Sheets read, so an outage never breaks every page title. They are rendered into public HTML, visible to every visitor and crawler: keep them generic. Robots/`noindex` and the per-page titles are hard-coded in the routes, not read from the sheet.
+- **`ALLOWED_EMAILS`** is the planned access list: one row, one cell, emails separated by commas (case and spaces do not matter). Never use one row per email, because duplicate keys overwrite each other. Once enforced, Google sign-in proves who the user is and the server grants real data only on an exact, verified-email match. If the read fails or the row is empty, everyone gets demo mode. Anyone who can edit the workbook can change the list, so share the workbook read-only with everyone but yourself. Until it is enforced the value is ignored and every visitor sees the same data.
+- `test:sheets` only checks that every row has a key and a value, so do not leave a key with a blank value.
+
+## Authentication
+
+Google OAuth through Auth.js (`next-auth` v5, beta channel), configured in `src/lib/auth/auth.ts`. The handlers live at `/api/auth/*`. The session is a signed JWT cookie, so there is no database; Auth.js reads `AUTH_SECRET`, `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` from the environment on its own.
+
+**Current behavior.** Signing in is optional and only identifies the user. Signed-out, signed-in and non-allowlisted visitors all see the same pages and the same real data. The `ALLOWED_EMAILS` check, the demo mode and the blurred cashflow view are not built yet, so **do not expose the app to the internet** (see [Deployment](#deployment)).
+
+**Navbar profile** (`src/components/ui/user-profile.tsx`, a server component rendered in the root layout inside `Suspense`):
+
+- Signed out: a small round `?` button with a thin **red** border. Clicking it starts the Google sign-in and returns to the same page.
+- Signed in: the Google profile picture (or the initial of the name) with a thin **green** border and a *Sign out* button. Green means "signed in with Google", not "allowed": no allowlist is applied yet.
+- A component that reads the session must call `await connection()` and sit inside `Suspense`, otherwise Next 16 (`cacheComponents`) fails the prerender.
+
+### Environment variables
+
+Put them in `.env.local` (never commit them) and in the host's environment settings in production.
+
+| Variable | Purpose |
 | --- | --- |
-| CURRENCY_1 | CHF |
-| CURRENCY_2 | EUR |
-| CURRENCY_3 | USD |
+| `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY` | Sheets service account (not the sign-in) |
+| `AUTH_GOOGLE_ID` | OAuth client ID from Google Cloud Console |
+| `AUTH_GOOGLE_SECRET` | OAuth client secret from Google Cloud Console |
+| `AUTH_SECRET` | Random string that signs the session cookie, for example `openssl rand -base64 32`. Keep the production value different from the development one |
+| `AUTH_TRUST_HOST` | `true` in production behind a proxy or a host such as Vercel. Not needed on localhost |
+
+### Google Cloud Console setup
+
+Two separate Google credentials are involved. The **service account** reads the workbook (server to Sheets). The **OAuth client** signs users in (browser to Google). They can live in the same Cloud project or in different ones.
+
+1. **Project.** Open [console.cloud.google.com](https://console.cloud.google.com) and pick a project in the project picker, or create one (*New project*). Any project works; the welcome page of a fresh account may already have one.
+2. **Open the Google Auth Platform.** Go to *APIs & Services → OAuth consent screen*. The menu may be called *Google Auth Platform* and has the sections *Overview, Branding, Audience, Clients, Data access*. If it says the platform is not configured, click *Get started*.
+3. **Branding / app information.**
+   - App name: shown on Google's consent page, for example `Net Worth`.
+   - User support email: your Gmail address.
+   - Developer contact email: your address.
+   - Optional while the app is in Testing: app home page (`https://<domain>/`), privacy policy link (`https://<domain>/privacy`), terms of service link (`https://<domain>/ts`) and authorized domains (`<domain>`). Fill them in before publishing, and write real text in `/privacy` and `/ts` first.
+4. **Audience.** Choose user type **External** (the only choice for a personal Gmail account). Keep *Publishing status* on **Testing** for now.
+   - In Testing, only the accounts listed under *Test users* can sign in (up to 100). Add every account that should be able to log in, including your own. Any other account gets `Error 403: access_denied`.
+   - Click *Publish app → Confirm* to move to **In production**. Then any Google account can sign in and the test-user list no longer applies. No Google verification is needed because the app asks only for basic sign-in scopes. A "Google hasn't verified this app" screen can still appear; *Advanced → Go to <app>* gets past it.
+   - Publishing opens Google sign-in to everyone, so publish only after `ALLOWED_EMAILS` is enforced in the backend.
+5. **Data access (scopes).** Keep the defaults: `openid`, `.../auth/userinfo.email` and `.../auth/userinfo.profile`. Do not add Sheets or Drive scopes: the workbook is read by the service account, never with the user's login.
+6. **Create the OAuth client.** *Clients → Create client* (or *APIs & Services → Credentials → Create credentials → OAuth client ID*).
+   - Application type: **Web application**. Name: anything, for example `nw web`.
+   - Authorized JavaScript origins: leave empty (Auth.js redirects on the server).
+   - Authorized redirect URIs, one per environment, matched exactly (protocol, host, port, no trailing slash):
+     - `http://localhost:3000/api/auth/callback/google`
+     - `https://<domain>/api/auth/callback/google`
+   - Click *Create* and copy the **Client ID** and **Client secret** into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Copy the secret immediately: Google may not show it again, and if it is lost you add a new secret on the client's page and disable the old one. Never paste it into chat, commits or screenshots. Changes to a client can take a few minutes to apply.
+7. **Check it.** Restart `npm run dev`, open the app and click the red `?`. After the Google consent you return to the same page and the picture appears with a green border.
+8. **Sheets service account** (already in place if the dashboards load). *APIs & Services → Library → Google Sheets API → Enable* in the service account's project; create the service account and a JSON key; put `client_email` and `private_key` into `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY`; share the workbook with that email as **Viewer**.
+
+### Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `Error 400: redirect_uri_mismatch` | The redirect URI in the client differs from the one the app uses. Add `http://localhost:3000/api/auth/callback/google` (or the production URL), exactly as shown in the error |
+| `Error 403: access_denied` | The app is in Testing and the account is not a test user. Add it under *Audience → Test users* or publish the app |
+| "Google hasn't verified this app" | Expected for an unverified app. *Advanced → Continue* |
+| Auth.js `MissingSecret` or `Configuration` error | `AUTH_SECRET`, `AUTH_GOOGLE_ID` or `AUTH_GOOGLE_SECRET` is missing from the environment. Set it and restart the server |
+| `UntrustedHost` in production | Set `AUTH_TRUST_HOST=true` on the host |
+| Sign-in works on localhost only | The production redirect URI is not registered, or the host's environment variables are missing |
+
+## Deployment
+
+Not ready for the internet yet. Before deploying:
+
+1. Enforce `ALLOWED_EMAILS` in the backend and build the demo mode (see [Planned](#planned)). Today every visitor, signed in or not, sees the real financial data.
+2. Write the real `/privacy` and `/ts` pages, and register `https://<domain>/api/auth/callback/google` in the OAuth client.
+3. Set `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET` and `AUTH_TRUST_HOST=true` in the host's environment settings. `.env.local` is git-ignored and is not deployed.
+4. Run `npm run download:market-data` and commit the result if the data should be refreshed. `data/market-data` is **tracked in git** (18 small JSON files), so a host that deploys from the repository already has the price files. The file names are your tickers: if the repository is public, anyone can see which instruments you track (not quantities or values), so keep the repository private.
 
 ## Tests and validation
 
@@ -321,7 +405,7 @@ npm test            # node:test suite through tsx
 npm run test:sheets # live workbook contract check
 ```
 
-`npm test` runs 17 test files in `tests/`. It needs no environment variables and never touches Google Sheets, the real `data/market-data` files or the network: tab parsers take plain arrays, market-data tests use a temporary directory and a stubbed `fetch`, and the dashboards are rendered from synthetic reports. It covers parsing, validation, valuation, analytics, the benchmark, the hall of fame, the filters, the page loaders and the dashboard render.
+`npm test` runs 18 test files in `tests/`. It needs no environment variables and never touches Google Sheets, the real `data/market-data` files or the network: tab parsers take plain arrays, market-data tests use a temporary directory and a stubbed `fetch`, and the dashboards are rendered from synthetic reports. It covers parsing (including the `costants` text values and the app settings defaults), validation, valuation, analytics, the benchmark, the hall of fame, the filters, the page loaders and the dashboard render.
 
 `npm run test:sheets` checks, per tab:
 
@@ -330,7 +414,7 @@ npm run test:sheets # live workbook contract check
 - `metadata`: required columns; every field except `DISPLAY_NAME` is required.
 - `categories`: required columns and values; boolean `TRUE`/blank flags; no duplicates.
 - `saa`: required columns; ascending dates; non-negative targets.
-- `costants`: no header row; a non-empty key and value on every row.
+- `costants`: no header row; a non-empty key and value on every row. It does not yet validate `ALLOWED_EMAILS`.
 
 ## Libraries
 
@@ -342,6 +426,7 @@ npm run test:sheets # live workbook contract check
 | Tailwind CSS 4 | Styling |
 | Recharts | Every interactive chart |
 | googleapis | Service-account Google Sheets client |
+| next-auth 5 (Auth.js, beta) | Google OAuth sign-in with JWT sessions |
 | tsx | Test runner and script runner |
 | ESLint | Static code-quality checks |
 
@@ -349,7 +434,9 @@ npm run test:sheets # live workbook contract check
 
 Not built yet; see [CLAUDE.md](CLAUDE.md) for the full product scope and [TODO.md](TODO.md) for the backlog.
 
-- Google OAuth restricted to an `ALLOWED_EMAILS` allowlist, plus a demo mode that blurs cashflow and shows only relative data elsewhere, enforced in the backend.
+- Enforcing the `ALLOWED_EMAILS` allowlist from the `costants` tab on top of the existing Google sign-in: read server-side with the service account, cached 1–5 minutes, fail closed, checked in every loader and API route; the `test:sheets` check for the key.
+- Demo mode for everyone else: cashflow blurred, no real amounts, transactions, account names or quantities, other dashboards on relative data with a fixed $100{,}000$ portfolio, enforced in the backend.
+- `LOCALE` as `<html lang>`, and the real `/privacy` and `/ts` text.
 - Home overview, SAA allocation and drift, Monte Carlo and FIRE analysis, admin and data-quality pages.
 - Read-only JSON API routes (portfolio, net-worth history, spending, allocation, performance), if they are wanted.
 

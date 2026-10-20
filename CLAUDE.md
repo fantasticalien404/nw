@@ -67,7 +67,17 @@ First headers: `ASSET_CLASS`, `INSTRUMENT`; remaining columns are ascending repo
 
 ### `costants`
 
-No header row. Column A is the key and column B is the value.
+No header row. Column A is the key and column B is the value. Keys are unique, upper-case, and read case-insensitively.
+
+| Key | Value |
+| --- | --- |
+| `CURRENCY_1` | Required reporting currency. `CURRENCY_2` and `CURRENCY_3` are optional. |
+| `ALLOWED_EMAILS` | Comma-separated Google accounts allowed to see real data (see Authentication). One row, one cell. Never one row per email: duplicate keys overwrite each other. Not read by the app yet. |
+| `APP_NAME` | Site name: default page title and the suffix of every page title. Read by the app (default `Net Worth`). |
+| `APP_DESCRIPTION` | `<meta name="description">`. Read by the app (default `Private personal-wealth dashboard`). |
+| `LOCALE` | `<html lang>`, for example `en`. Not read by the app yet. |
+
+`parseConstants` normalizes only `CURRENCY_*` values as currency codes; text values (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`) keep their case, except that emails are lower-cased when compared. `APP_NAME` and `APP_DESCRIPTION` are loaded by `loadCachedAppSettings` (`src/app/load-app-settings.ts`, `"use cache"` with `cacheLife("minutes")`); a failed read falls back to the defaults in `lib/sheets/app-settings.ts` so a Sheets outage never breaks page titles. Keep `costants` free of personal data other than the allowlist: `APP_NAME` and `APP_DESCRIPTION` end up in public HTML, so keep them generic. Robots/`noindex` and per-page titles are hard-coded, never read from the sheet.
 
 ## Architecture and Methodology
 
@@ -86,6 +96,8 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 ### Implemented routes
 
 - `/networth`: parses `assets`, `metadata`, and `costants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and the asset summary table (fixed January–December columns, see Summary table layout).
+- `/saa`, `/montecarlo`, `/docs`, `/privacy`, `/ts`: empty "Coming soon" placeholders. `/privacy` (privacy policy) and `/ts` (terms of service) are linked from Google's consent screen; they are not in the navbar and need real text before the OAuth app is published.
+- `/api/auth/*`: Auth.js endpoints (`src/app/api/auth/[...nextauth]/route.ts`). There are no financial-data API routes yet.
 - `/` (`/cashflow` redirects to it): parses `cashflow`, `categories`, and `costants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
 
 ### Calculation rules
@@ -112,6 +124,7 @@ The cashflow summary table (`/`) and the net-worth asset summary table (`/networ
 - Tailwind CSS 4 for styling.
 - Recharts for all interactive charts.
 - `googleapis` for the service-account Google Sheets client.
+- `next-auth` v5 (Auth.js, beta channel) for Google OAuth sign-in with JWT sessions.
 - Yahoo Finance chart endpoint through the explicit downloader script; the application consumes only the downloaded JSON price store.
 - `tsx` for the test runner and workbook validation, and ESLint for static checks.
 
@@ -126,9 +139,38 @@ The cashflow summary table (`/`) and the net-worth asset summary table (`/networ
 
 ## Authentication
 
-Use Google OAuth. Do not implement a custom password flow.
+Use Google OAuth through Auth.js. Do not implement a custom password flow.
 
-Allow one or more approved accounts through a comma-separated `ALLOWED_EMAILS` value in `.env.local`. Normalize sign-in emails to lowercase and grant access only when the email is present in this allowlist. Never commit the allowlist or other environment values.
+### Implemented
+
+- `src/lib/auth/auth.ts` configures `NextAuth({ providers: [Google] })` and exports `handlers`, `auth`, `signIn`, `signOut`. Sessions are JWT cookies; there is no database. Auth.js reads `AUTH_SECRET`, `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` from the environment.
+- The navbar profile (`src/components/ui/user-profile.tsx`, server component, in the root layout inside `Suspense`): a thin red-bordered `?` button that starts the Google sign-in when signed out; the Google picture with a thin green border plus a *Sign out* button when signed in. Green means signed in with Google, not allowed.
+- Signing in is optional. **No behavior differs yet** between signed-out, signed-in and non-allowlisted users: everyone sees the real data. The allowlist and demo mode below are the target design and are not enforced yet, so the app must not be exposed to the internet.
+- Any component that reads the session must call `await connection()` and be rendered inside `Suspense` (`cacheComponents` is on); otherwise the prerender fails with a `crypto.getRandomValues()` error. Never read the session in `lib/analytics` or `lib/market-data`.
+
+### Google Cloud Console configuration
+
+The Sheets service account (server reads the workbook) and the OAuth client (users sign in) are separate credentials and may share a Cloud project.
+
+1. Project: pick or create a project in the Cloud Console.
+2. *APIs & Services → OAuth consent screen* (*Google Auth Platform*): *Get started*, then Branding: app name, user support email, developer contact email. Home page, privacy policy (`https://<domain>/privacy`), terms (`https://<domain>/ts`) and authorized domain are optional in Testing and expected before publishing.
+3. Audience: user type **External**. Publishing status **Testing** lists the only accounts that can sign in (*Test users*, max 100); other accounts get `access_denied`. **Publish app** moves it to *In production* so any Google account can sign in, with no verification needed for basic scopes. Publish only after the allowlist is enforced.
+4. Data access: keep the default scopes `openid`, `userinfo.email`, `userinfo.profile`. Never add Sheets or Drive scopes: the workbook is read only by the service account.
+5. Clients → Create client → **Web application**. Leave JavaScript origins empty. Redirect URIs, matched exactly (protocol, host, port, no trailing slash): `http://localhost:3000/api/auth/callback/google` and `https://<domain>/api/auth/callback/google`.
+6. Copy the client ID and secret into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`; Google may not show the secret again. `AUTH_SECRET` is a random string (`openssl rand -base64 32`), different in production. Set `AUTH_TRUST_HOST=true` on a proxied host. `README.md` has the full walkthrough and the troubleshooting table.
+7. Never print, commit, or paste the client secret, `AUTH_SECRET`, or any other environment value.
+
+### Allowlist (target design, not enforced yet)
+
+Google OAuth only proves identity. Authorization is the allowlist, a comma-separated `ALLOWED_EMAILS` value in the `costants` tab (not in `.env.local`):
+
+- The server reads the allowlist with the service account when checking a session, never in the browser and never exposed to clients.
+- Trim and lower-case every allowlist entry and the session email; require a verified Google email. Grant real data only on an exact match.
+- Fail closed: if the Sheets read fails, the key is missing, or the value is empty, everyone is treated as unauthenticated (demo mode). Never fall back to real data.
+- Cache the allowlist briefly (1–5 minutes) to avoid a Sheets call per request. Removing an email takes effect within that window.
+- Check authorization in every page loader and API route that returns data, not only in the UI.
+- Anyone with edit access to the workbook can grant access; share it read-only with everyone except the owner.
+- The allowlist is not secret but is personal data: do not log, print, or send it to the client.
 
 Unauthenticated users may access a privacy-preserving demo mode only:
 
@@ -165,7 +207,7 @@ src/
     sheets/               # Google Sheets client, schema parsing, validation
     market-data/          # Local price and FX retrieval
     analytics/            # Pure financial calculations
-    auth/                 # OAuth and allowlist checks
+    auth/                 # Auth.js Google OAuth config (allowlist check still to come)
   types/                  # Shared domain and API types
 scripts/                  # Workbook checks and market-data downloader
 data/market-data/         # Downloaded ticker and FX price files
@@ -196,8 +238,10 @@ Primary pages:
 
 ## Validation and commands
 
-- Required environment variables in `.env.local`: `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`.
+- Required environment variables in `.env.local`: `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, plus `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and `AUTH_SECRET` for Google sign-in (and `AUTH_TRUST_HOST=true` on a proxied host). The allowlist is not an environment variable. `.env.local` is git-ignored and is not deployed: set the same variables in the host's settings.
 - Run `npm run download:market-data` after workbook changes and before running or deploying the app.
 - Run `npm run test:sheets` after changes to Sheets parsing or workbook validation.
 - Run `npm run lint` and `npm test` for code changes. Tests live in `tests/*.test.ts(x)` (`node:test` through `tsx`), use synthetic data only, and need no environment variables. Add or update a test with every parser, analytics, or market-data change.
-- Do not print or commit environment values, service-account keys, or spreadsheet identifiers.
+- Do not print or commit environment values, service-account keys, OAuth client secrets, or spreadsheet identifiers.
+- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Do not deploy with real data before the allowlist and demo mode are enforced, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
+- The root layout builds `<title>` and description from `APP_NAME` / `APP_DESCRIPTION`; each page exports its own `metadata.title`. Robots/`noindex` stay hard-coded.

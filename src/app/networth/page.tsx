@@ -2,6 +2,8 @@ import { NetWorthPortfolio } from "@/components/net-worth/net-worth-portfolio";
 import { connection } from "next/server";
 import { loadNetWorthPage } from "./load-net-worth-page";
 
+export const metadata = { title: "Net worth" };
+
 export const instant = false;
 
 export default async function NetWorthPage() {
