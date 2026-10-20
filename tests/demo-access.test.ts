@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { loadCashflowPage } from "@/app/cashflow/load-cashflow-page";
+import { loadNetWorthPage } from "@/app/networth/load-net-worth-page";
+import { addDays, today } from "@/lib/dates";
 import { DEMO_MULTIPLIER_MAX, demoMultiplier } from "@/lib/demo/multiplier";
 import { scaleCashflowWorkbook, scaleNetWorthWorkbook } from "@/lib/demo/scale";
 import { parseAccessSettings } from "@/lib/sheets/access-settings";
@@ -68,12 +70,48 @@ describe("loadCashflowPage with a multiplier", () => {
   it("scales income and expenses while the savings rate stays the same", async () => {
     fixture = setupMarketData({});
     const real = await loadCashflowPage(async () => cashflow);
-    const demo = await loadCashflowPage(async () => cashflow, 2);
+    const demo = await loadCashflowPage(async () => cashflow, () => 2);
     const month = (page: typeof real) => page.reports!.CHF.periods.find((period) => period.income !== null)!;
 
     assert.equal(month(demo).income, 2 * month(real).income!);
     assert.equal(month(demo).expenses, 2 * month(real).expenses!);
     assert.equal(month(demo).savingsRate, month(real).savingsRate);
+  });
+});
+
+describe("loader errors", () => {
+  it("shows the error message, and never loads the workbook, when the multiplier cannot be resolved", async () => {
+    fixture = setupMarketData({});
+    let loaded = false;
+    const page = await loadCashflowPage(async () => { loaded = true; return cashflow; }, async () => { throw new Error("Set DEMO_SALT in the environment."); });
+
+    assert.deepEqual(page, { currency: null, reports: null, error: "Set DEMO_SALT in the environment." });
+    assert.equal(loaded, false);
+  });
+});
+
+describe("loadNetWorthPage with a multiplier", () => {
+  it("scales the portfolio totals and leaves the percentage changes alone", async () => {
+    const day = (offset: number) => addDays(today(), offset);
+    const asset = (values: Array<[string, number]>): NetWorthWorkbook["assets"][number] => ({
+      asset: "Savings", datatype: "cash", currency: "CHF", account: "-", displayName: null, fullName: null, reportingValues: new Map(values),
+    });
+    const workbook: NetWorthWorkbook = { reportingPeriods: [day(-60), day(-30)], currencies: ["CHF"], assets: [asset([[day(-60), 1_000], [day(-30), 1_100]])] };
+    const sources = { netWorth: async () => workbook, cashflow: async () => cashflow };
+    fixture = setupMarketData({});
+    const real = await loadNetWorthPage(sources);
+    const demo = await loadNetWorthPage(sources, () => 3);
+
+    assert.equal(demo.report!.totals[0][1], 3 * real.report!.totals[0][1]!);
+    assert.equal(demo.report!.absoluteChanges[1], 3 * real.report!.absoluteChanges[1]!);
+    assert.equal(demo.report!.percentageChanges[1], real.report!.percentageChanges[1]);
+  });
+
+  it("returns the error message when the multiplier cannot be resolved", async () => {
+    fixture = setupMarketData({});
+    const page = await loadNetWorthPage({ netWorth: async () => netWorth, cashflow: async () => cashflow }, () => { throw new Error("Set DEMO_SALT in the environment."); });
+    assert.equal(page.error, "Set DEMO_SALT in the environment.");
+    assert.equal(page.report, null);
   });
 });
 

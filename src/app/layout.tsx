@@ -16,10 +16,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-/** Site name and description come from `costants`; pages add their own title before the name. */
+/** Site name and description come from `costants`; pages add their own title before the name. Private dashboard: never indexed. */
 export async function generateMetadata(): Promise<Metadata> {
   const { appName, appDescription } = await loadCachedAppSettings();
-  return { title: { default: appName, template: `%s · ${appName}` }, description: appDescription };
+  return { title: { default: appName, template: `%s · ${appName}` }, description: appDescription, robots: { index: false, follow: false } };
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

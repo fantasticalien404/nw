@@ -20,7 +20,7 @@ Enter data manually once, store it in a simple and transparent format, and let t
 | `/networth` dashboard | Implemented: trend, asset table, benchmark comparison, growth sources, hall of fame, net worth by currency |
 | Workbook parsing and contract validation | Implemented (`npm run test:sheets`) |
 | Market-data downloader and local price store | Implemented (`npm run download:market-data`); the app also tops up stale files at runtime (see [Market data](#market-data)) |
-| Test suite | 171 tests, synthetic data only (`npm test`) |
+| Test suite | 174 tests, synthetic data only (`npm test`). `cashflow-insights.test.ts` has a 200 ms timing assertion that can fail intermittently on a loaded machine |
 | `/saa`, `/montecarlo`, `/docs` | Placeholders ("Coming soon") |
 | `/privacy`, `/ts` | Empty placeholders ("Coming soon") for the privacy policy and the terms of service. Google's consent screen links to them; write the real text before publishing the app. They are not in the navbar |
 | Authentication and access | Google sign-in (Auth.js, JWT session, no database). Real values only for an allowlisted Google email (`ALLOWED_EMAILS`) or a visitor who enters `LUCKY_SEED`; everyone else sees every amount multiplied by a seeded factor. See [Authentication](#authentication) and [Demo mode](#demo-mode) |
@@ -58,7 +58,7 @@ Rules that keep the layers apart:
 ### Request lifecycle
 
 1. The page calls `await connection()`, so it is rendered per request. There is no cache for financial data: every page load re-reads the workbook and the price files. Two things sit outside this: the root layout reads `APP_NAME` / `APP_DESCRIPTION` through a cached loader (`"use cache"`, refreshed after a few minutes), and the navbar reads the Google session cookie in its own `Suspense` boundary.
-2. The page asks `resolveMultiplier()` who is looking (allowlisted user or lucky seed: factor 1; anyone else: the seeded demo factor, see [Demo mode](#demo-mode)). The loader reads the needed tabs in parallel with one Sheets call per range, parses them into typed workbooks and multiplies the money inputs by that factor.
+2. The page hands `resolveMultiplier` to the loader, which calls it first, inside its `try` (allowlisted user or lucky seed: factor 1; anyone else: the seeded demo factor, see [Demo mode](#demo-mode)). A failure, for example a missing `DEMO_SALT`, therefore shows as the page's normal error box. The loader reads the needed tabs in parallel with one Sheets call per range, parses them into typed workbooks and multiplies the money inputs by that factor.
 3. A fresh market-data object is created for the request. It reads each price file at most once and answers every later lookup from memory.
 4. Workbook values are priced and converted, then the analytics build the reports.
 5. The page renders. If a step fails, the page shows the error message in a bordered box instead of the dashboard. On `/networth` the cashflow-dependent sections fail separately and leave the rest intact (see [Failure handling](#failure-handling)).
@@ -329,7 +329,7 @@ System-wide constants. Each row has a key in column A and its value in column B;
 | LUCKY_SEED | a long secret phrase | A demo seed that unlocks real values for anyone who enters it. Read by the app (server-side only) |
 | LOCALE | en | `<html lang>`. **Not read by the app yet** |
 
-- **`APP_NAME` and `APP_DESCRIPTION`** are cached for a few minutes, so a sheet edit takes that long to appear. A blank or missing key falls back to `Net Worth` / `Private personal-wealth dashboard`, and so does a failed Sheets read, so an outage never breaks every page title. They are rendered into public HTML, visible to every visitor and crawler: keep them generic. Robots/`noindex` and the per-page titles are hard-coded in the routes, not read from the sheet.
+- **`APP_NAME` and `APP_DESCRIPTION`** are cached for a few minutes, so a sheet edit takes that long to appear. A blank or missing key falls back to `Net Worth` / `Private personal-wealth dashboard`, and so does a failed Sheets read, so an outage never breaks every page title. They are rendered into public HTML, visible to every visitor and crawler: keep them generic. Robots/`noindex` (`<meta name="robots" content="noindex, nofollow">` from the root layout) and the per-page titles are hard-coded in the routes, not read from the sheet.
 - **`ALLOWED_EMAILS`**: one row, one cell, emails separated by commas (case and spaces do not matter). Never use one row per email, because duplicate keys overwrite each other. Google sign-in proves who the user is; the server grants real values only when the verified Google email is in this list. If the read fails or the row is empty, nobody is allowlisted (fail closed). Anyone who can edit the workbook can change the list, so share the workbook read-only with everyone but yourself.
 - **`LUCKY_SEED`**: when a visitor's seed equals it exactly (case-sensitive, compared in constant time on the server), the multiplier becomes 1 and they see real values without signing in. It works like a password typed into a public field, so use a long phrase that cannot be guessed; short numbers can be found by trial, and there is no rate limiting. It is read on the server only and never sent to the browser. Leave the row out to disable it.
 - Both keys are cached for a few minutes, so a change in the sheet takes that long to apply.
@@ -398,6 +398,10 @@ Two separate Google credentials are involved. The **service account** reads the 
 | Auth.js `MissingSecret` or `Configuration` error | `AUTH_SECRET`, `AUTH_GOOGLE_ID` or `AUTH_GOOGLE_SECRET` is missing from the environment. Set it and restart the server |
 | `UntrustedHost` in production | Set `AUTH_TRUST_HOST=true` on the host |
 | Sign-in works on localhost only | The production redirect URI is not registered, or the host's environment variables are missing |
+| `Error 400: redirect_uri_mismatch` only on a different port | The redirect URI contains the port. The client registers `http://localhost:3000/...`; running on another port (for example 3001) needs its own entry |
+| `next start` shows "There is a problem with the server configuration" when signing in | `AUTH_TRUST_HOST=true` is missing: Auth.js refuses untrusted hosts outside `next dev`. The session is also unreadable then, so even allowlisted users would see demo values |
+| A page shows `Set DEMO_SALT in the environment.` | `DEMO_SALT` is missing or the server was not restarted after adding it. Changes to `.env.local` need a restart of `npm run dev` |
+| The seed does not stick on `next start` over plain http | The seed cookie is `Secure` in production. Chrome accepts it on `localhost`; Safari and any non-localhost http address do not. Use https |
 
 ## Demo mode
 
@@ -456,7 +460,7 @@ The form posts to the `setDemoSeed` server action (`src/lib/auth/demo-seed.ts`).
 - **`cacheComponents` is on.** A component that reads the session or cookies must call `await connection()` and sit inside `Suspense`; otherwise Next fails the prerender with a `crypto.getRandomValues()` error. `UserProfile` does both, and the root layout wraps it with a neutral placeholder as fallback.
 - **A deleted cookie reads back as `""` in the same request.** `resolveAccess` therefore uses `cookie || DEFAULT_SEED`, not `??`. With `??` the page rendered with an empty seed right after clearing it.
 - **`"use server"` files may only export async functions**, so the cookie name, default seed and length limit live in `access.ts`, not in `demo-seed.ts`.
-- **Loader signatures.** `loadCashflowPage(loadWorkbook = loadCashflowWorkbook, multiplier = 1)` and `loadNetWorthPage(sources = defaultNetWorthSources, multiplier = 1)`. The defaults keep the existing tests unchanged; `defaultNetWorthSources` is exported so the page can pass a multiplier without redefining the sources.
+- **Loader signatures.** `loadCashflowPage(loadWorkbook = loadCashflowWorkbook, getMultiplier = () => 1)` and `loadNetWorthPage(sources = defaultNetWorthSources, getMultiplier = () => 1)`. `getMultiplier` is a function (sync or async) and runs inside the loader's `try`: when it throws, the page shows the message in its error box instead of crashing with HTTP 500. The pages pass `resolveMultiplier` itself. The defaults keep the existing tests unchanged; `defaultNetWorthSources` is exported so the page can pass a multiplier function without redefining the sources.
 - **`parseConstants` now keeps text as typed.** Before, every value was upper-cased as a currency; now only `CURRENCY_*` values are normalized. Text keys (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`, `LUCKY_SEED`) keep their case.
 - **Site metadata.** The root layout uses `generateMetadata` with `title: { default: APP_NAME, template: "%s · APP_NAME" }`; each page exports its own `metadata.title` (`Cashflow`, `Net worth`, `SAA`, `Monte Carlo`, `Docs`, `Privacy policy`, `Terms of service`). Settings come from a cached loader that falls back to defaults on error.
 - **Dependency.** `next-auth@beta` (5.0.0-beta.32) was added to `package.json`.

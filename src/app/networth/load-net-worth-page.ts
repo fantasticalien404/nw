@@ -67,9 +67,13 @@ async function fillBenchmarkInputs(market: MarketData, report: NetWorthReport, b
 
 export const defaultNetWorthSources: NetWorthPageSources = { netWorth: loadNetWorthWorkbook, cashflow: loadCashflowWorkbook };
 
-/** Loads the workbooks and local market data and builds everything the net-worth page renders. Amounts are scaled by `multiplier` (1 = real values). */
-export async function loadNetWorthPage(sources: NetWorthPageSources = defaultNetWorthSources, multiplier = 1): Promise<NetWorthPageData> {
+/** Loads the workbooks and local market data and builds everything the net-worth page renders. Amounts are scaled by `getMultiplier()` (1 = real values); it runs inside the `try` so a failure shows the page's error message instead of crashing it. */
+export async function loadNetWorthPage(
+  sources: NetWorthPageSources = defaultNetWorthSources,
+  getMultiplier: () => number | Promise<number> = () => 1,
+): Promise<NetWorthPageData> {
   try {
+    const multiplier = await getMultiplier();
     const market = createMarketData();
     const workbook = scaleNetWorthWorkbook(await sources.netWorth(), multiplier);
     const report = buildNetWorthReport(await valueNetWorth(market, workbook));

@@ -34,7 +34,7 @@ Found by reading the code, probing the analytics with synthetic data, checking t
 
 ### Against CLAUDE.md
 
-- **No authentication or demo mode.** There is no Google OAuth, allowlist, middleware or API route, so `/` and `/networth` serve real data to anyone who can reach the server. Required before any deployment.
+- **Authentication and demo mode are implemented** (Google sign-in, `ALLOWED_EMAILS`, `LUCKY_SEED`, seeded multiplier; see README). Remaining gaps: `test:sheets` does not validate the access keys, there is no rate limit on seed attempts, and the multiplier can be estimated by trying many seeds. Review before any public deployment.
 - **Runtime Yahoo top-up.** `src/lib/market-data/prices.ts` fetches missing recent days from Yahoo on every render when the local file is behind today, which CLAUDE.md forbids. It also merges re-based adjusted closes into older rows, and it issues one request per symbol on weekends and holidays.
 - **Benchmark metrics are never rendered.** `buildBenchmarkComparison` computes IRR, growth, Sharpe ratio, volatility, maximum drawdown and best/worst month, but no component shows them. The money-weighted IRR is required by the spec.
 - SAA, Monte Carlo and Docs pages are "Coming soon" placeholders; the spec names the net-worth route `/nw` while the code serves `/networth`.

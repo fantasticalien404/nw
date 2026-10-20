@@ -11,7 +11,7 @@ export const instant = false;
 
 export default async function CashflowPage() {
   await connection();
-  const { currency, reports, error } = await loadCashflowPage(loadCashflowWorkbook, await resolveMultiplier());
+  const { currency, reports, error } = await loadCashflowPage(loadCashflowWorkbook, resolveMultiplier);
 
   if (error || !reports || !currency) {
     return (

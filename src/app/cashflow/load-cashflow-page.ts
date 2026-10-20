@@ -9,9 +9,13 @@ export type CashflowPageData =
   | { currency: string; reports: Record<string, CashflowReport>; error: null }
   | { currency: null; reports: null; error: string };
 
-/** Loads the workbook and builds one cashflow report per reporting currency (`CURRENCY_1` is the default). Amounts are scaled by `multiplier` (1 = real values). */
-export async function loadCashflowPage(loadWorkbook: () => Promise<CashflowWorkbook> = loadCashflowWorkbook, multiplier = 1): Promise<CashflowPageData> {
+/** Loads the workbook and builds one cashflow report per reporting currency (`CURRENCY_1` is the default). Amounts are scaled by `getMultiplier()` (1 = real values); it runs inside the `try` so a failure shows the page's error message instead of crashing it. */
+export async function loadCashflowPage(
+  loadWorkbook: () => Promise<CashflowWorkbook> = loadCashflowWorkbook,
+  getMultiplier: () => number | Promise<number> = () => 1,
+): Promise<CashflowPageData> {
   try {
+    const multiplier = await getMultiplier();
     const workbook = scaleCashflowWorkbook(await loadWorkbook(), multiplier);
     const market = createMarketData();
     const reports = await Promise.all(workbook.reportingCurrencies.map(async (currency) => {

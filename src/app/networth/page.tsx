@@ -9,7 +9,7 @@ export const instant = false;
 
 export default async function NetWorthPage() {
   await connection();
-  const { report, benchmarkInputs, growthSeries, hallOfFame, error } = await loadNetWorthPage(defaultNetWorthSources, await resolveMultiplier());
+  const { report, benchmarkInputs, growthSeries, hallOfFame, error } = await loadNetWorthPage(defaultNetWorthSources, resolveMultiplier);
 
   if (error || !report) {
     return (
