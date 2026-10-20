@@ -72,12 +72,13 @@ No header row. Column A is the key and column B is the value. Keys are unique, u
 | Key | Value |
 | --- | --- |
 | `CURRENCY_1` | Required reporting currency. `CURRENCY_2` and `CURRENCY_3` are optional. |
-| `ALLOWED_EMAILS` | Comma-separated Google accounts allowed to see real data (see Authentication). One row, one cell. Never one row per email: duplicate keys overwrite each other. Not read by the app yet. |
+| `ALLOWED_EMAILS` | Comma-separated Google accounts allowed to see real data (see Authentication). One row, one cell. Never one row per email: duplicate keys overwrite each other. Read server-side only. |
+| `LUCKY_SEED` | A demo seed that unlocks real values for anyone who enters it. Optional; use a long phrase. Read server-side only, never sent to the client. |
 | `APP_NAME` | Site name: default page title and the suffix of every page title. Read by the app (default `Net Worth`). |
 | `APP_DESCRIPTION` | `<meta name="description">`. Read by the app (default `Private personal-wealth dashboard`). |
 | `LOCALE` | `<html lang>`, for example `en`. Not read by the app yet. |
 
-`parseConstants` normalizes only `CURRENCY_*` values as currency codes; text values (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`) keep their case, except that emails are lower-cased when compared. `APP_NAME` and `APP_DESCRIPTION` are loaded by `loadCachedAppSettings` (`src/app/load-app-settings.ts`, `"use cache"` with `cacheLife("minutes")`); a failed read falls back to the defaults in `lib/sheets/app-settings.ts` so a Sheets outage never breaks page titles. Keep `costants` free of personal data other than the allowlist: `APP_NAME` and `APP_DESCRIPTION` end up in public HTML, so keep them generic. Robots/`noindex` and per-page titles are hard-coded, never read from the sheet.
+`parseConstants` normalizes only `CURRENCY_*` values as currency codes; text values (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`) keep their case, except that emails are lower-cased when compared. `APP_NAME` and `APP_DESCRIPTION` are loaded by `loadCachedAppSettings` (`src/app/load-app-settings.ts`, `"use cache"` with `cacheLife("minutes")`); a failed read falls back to the defaults in `lib/sheets/app-settings.ts` so a Sheets outage never breaks page titles. `ALLOWED_EMAILS` and `LUCKY_SEED` are loaded by `loadCachedAccessSettings` (`src/lib/auth/access.ts`, same cache profile) and a failed read grants nobody access. Keep `costants` free of personal data other than the allowlist: `APP_NAME` and `APP_DESCRIPTION` end up in public HTML, so keep them generic. Robots/`noindex` and per-page titles are hard-coded, never read from the sheet.
 
 ## Architecture and Methodology
 
@@ -145,7 +146,10 @@ Use Google OAuth through Auth.js. Do not implement a custom password flow.
 
 - `src/lib/auth/auth.ts` configures `NextAuth({ providers: [Google] })` and exports `handlers`, `auth`, `signIn`, `signOut`. Sessions are JWT cookies; there is no database. Auth.js reads `AUTH_SECRET`, `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` from the environment.
 - The navbar profile (`src/components/ui/user-profile.tsx`, server component, in the root layout inside `Suspense`): a thin red-bordered `?` button that starts the Google sign-in when signed out; the Google picture with a thin green border plus a *Sign out* button when signed in. Green means signed in with Google, not allowed.
-- Signing in is optional. **No behavior differs yet** between signed-out, signed-in and non-allowlisted users: everyone sees the real data. The allowlist and demo mode below are the target design and are not enforced yet, so the app must not be exposed to the internet.
+- Signing in is optional. Only verified Google emails may sign in (`signIn` callback requires `email_verified`).
+- `resolveAccess()` (`src/lib/auth/access.ts`) decides per request, on the server, whether the visitor sees real values: an allowlisted email, or a seed cookie equal to `LUCKY_SEED` (constant-time comparison). Everyone else, signed in or not, gets demo values. `resolveMultiplier()` returns 1 for real values, otherwise the seeded factor.
+- While the visitor sees randomized values (`!real`), the navbar shows a warning icon (`components/ui/demo-notice.tsx`, client component, `fixed` tooltip because the navbar clips overflow) explaining "Randomized data. Log-in if you are an authorized user or try to guess the right seed to see real data". Keep the text and the `!real` condition in sync with `resolveAccess`.
+- The navbar also shows a *Seed* input (server action `setDemoSeed` in `src/lib/auth/demo-seed.ts`, HTTP-only cookie `demo-seed`, default seed `1`) to every visitor who is not an allowlisted user.
 - Any component that reads the session must call `await connection()` and be rendered inside `Suspense` (`cacheComponents` is on); otherwise the prerender fails with a `crypto.getRandomValues()` error. Never read the session in `lib/analytics` or `lib/market-data`.
 
 ### Google Cloud Console configuration
@@ -154,13 +158,13 @@ The Sheets service account (server reads the workbook) and the OAuth client (use
 
 1. Project: pick or create a project in the Cloud Console.
 2. *APIs & Services → OAuth consent screen* (*Google Auth Platform*): *Get started*, then Branding: app name, user support email, developer contact email. Home page, privacy policy (`https://<domain>/privacy`), terms (`https://<domain>/ts`) and authorized domain are optional in Testing and expected before publishing.
-3. Audience: user type **External**. Publishing status **Testing** lists the only accounts that can sign in (*Test users*, max 100); other accounts get `access_denied`. **Publish app** moves it to *In production* so any Google account can sign in, with no verification needed for basic scopes. Publish only after the allowlist is enforced.
+3. Audience: user type **External**. Publishing status **Testing** lists the only accounts that can sign in (*Test users*, max 100); other accounts get `access_denied`. **Publish app** moves it to *In production* so any Google account can sign in, with no verification needed for basic scopes. Publishing is safe for real data only because the allowlist is enforced in the backend.
 4. Data access: keep the default scopes `openid`, `userinfo.email`, `userinfo.profile`. Never add Sheets or Drive scopes: the workbook is read only by the service account.
 5. Clients → Create client → **Web application**. Leave JavaScript origins empty. Redirect URIs, matched exactly (protocol, host, port, no trailing slash): `http://localhost:3000/api/auth/callback/google` and `https://<domain>/api/auth/callback/google`.
 6. Copy the client ID and secret into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`; Google may not show the secret again. `AUTH_SECRET` is a random string (`openssl rand -base64 32`), different in production. Set `AUTH_TRUST_HOST=true` on a proxied host. `README.md` has the full walkthrough and the troubleshooting table.
 7. Never print, commit, or paste the client secret, `AUTH_SECRET`, or any other environment value.
 
-### Allowlist (target design, not enforced yet)
+### Allowlist
 
 Google OAuth only proves identity. Authorization is the allowlist, a comma-separated `ALLOWED_EMAILS` value in the `costants` tab (not in `.env.local`):
 
@@ -172,12 +176,18 @@ Google OAuth only proves identity. Authorization is the allowlist, a comma-separ
 - Anyone with edit access to the workbook can grant access; share it read-only with everyone except the owner.
 - The allowlist is not secret but is personal data: do not log, print, or send it to the client.
 
-Unauthenticated users may access a privacy-preserving demo mode only:
+### Demo mode
 
-- Blur all data on the income, expenses, and cashflow dashboard.
-- Never expose real financial amounts, transaction rows, account names, asset quantities, or personally identifying information.
-- Render other dashboards with relative/demo data. Use a fixed total portfolio value of $100{,}000$ solely to demonstrate allocation, charts, Monte Carlo scenarios, and risk analysis.
-- Keep demo data separate from authenticated data, and enforce this separation in backend/API routes rather than only in the frontend.
+Visitors who are not allowlisted and have not entered `LUCKY_SEED` see every money amount multiplied by one factor in [0, `DEMO_MULTIPLIER_MAX`) (currently 10, defined once in `lib/demo/multiplier.ts`), derived from their seed as `HMAC-SHA256(DEMO_SALT, seed)`:
+
+- Apply the factor in the backend, on the parsed workbook before valuation and analytics (`lib/demo/scale.ts`, called from the page loaders with the result of `resolveMultiplier()`), so every total, chart and table stays consistent. Never scale in a component, and never send the factor, `DEMO_SALT`, the allowlist or `LUCKY_SEED` to the client.
+- Scaled: asset quantities, cash and manual values, transaction amounts. Not scaled: percentages and returns, counts, dates, names, categories, tickers, account names.
+- Loaders take the factor as a parameter: `loadCashflowPage(loadWorkbook, multiplier = 1)` and `loadNetWorthPage(sources = defaultNetWorthSources, multiplier = 1)`; each scales the workbook right after reading it. The page calls `resolveMultiplier()` and passes the result in, so loaders stay testable without cookies or a session.
+- Every new loader or API route that returns financial data must take the multiplier from `resolveMultiplier()` and pass it through the scaling functions. `lib/demo` and `lib/analytics` stay pure: no cookies, session or environment access there.
+- `DEMO_SALT` is required; a missing salt must fail loudly, never fall back to real values.
+- Gotchas: read the seed cookie with `||`, not `??` (a cookie deleted in the same request reads back as `""`); `"use server"` files may export only async functions, so shared constants live in `lib/auth/access.ts`; session or cookie readers need `connection()` plus `Suspense`; the cached access settings return empty on a failed read so access fails closed.
+- Tests: `tests/demo-access.test.ts` covers the multiplier, scaling, the loader with a factor and the access-key parser; update it with any change to them.
+- Known limits (also in README): ratios stay real, and trying many seeds lets someone estimate the real amounts (the maximum factor approaches `DEMO_MULTIPLIER_MAX`, so the largest observation divided by it gives the real amount). Do not describe the demo as protecting the data; if stronger privacy is needed, hide ratios, names and accounts or use a fixed $100{,}000$ synthetic portfolio.
 
 ## Backend and market data
 
@@ -207,7 +217,8 @@ src/
     sheets/               # Google Sheets client, schema parsing, validation
     market-data/          # Local price and FX retrieval
     analytics/            # Pure financial calculations
-    auth/                 # Auth.js Google OAuth config (allowlist check still to come)
+    auth/                 # Auth.js Google OAuth config, access resolution (allowlist, lucky seed), seed action
+    demo/                 # Seeded multiplier and workbook scaling for demo mode
   types/                  # Shared domain and API types
 scripts/                  # Workbook checks and market-data downloader
 data/market-data/         # Downloaded ticker and FX price files
@@ -238,10 +249,10 @@ Primary pages:
 
 ## Validation and commands
 
-- Required environment variables in `.env.local`: `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, plus `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and `AUTH_SECRET` for Google sign-in (and `AUTH_TRUST_HOST=true` on a proxied host). The allowlist is not an environment variable. `.env.local` is git-ignored and is not deployed: set the same variables in the host's settings.
+- Required environment variables in `.env.local`: `GOOGLE_SHEET_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, plus `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and `AUTH_SECRET` for Google sign-in, and `DEMO_SALT` for the demo multiplier (and `AUTH_TRUST_HOST=true` on a proxied host). The allowlist is not an environment variable. `.env.local` is git-ignored and is not deployed: set the same variables in the host's settings.
 - Run `npm run download:market-data` after workbook changes and before running or deploying the app.
 - Run `npm run test:sheets` after changes to Sheets parsing or workbook validation.
 - Run `npm run lint` and `npm test` for code changes. Tests live in `tests/*.test.ts(x)` (`node:test` through `tsx`), use synthetic data only, and need no environment variables. Add or update a test with every parser, analytics, or market-data change.
 - Do not print or commit environment values, service-account keys, OAuth client secrets, or spreadsheet identifiers.
-- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Do not deploy with real data before the allowlist and demo mode are enforced, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
+- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Before deploying, set `DEMO_SALT`, fill `ALLOWED_EMAILS` (and optionally a long `LUCKY_SEED`) in `costants`, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
 - The root layout builds `<title>` and description from `APP_NAME` / `APP_DESCRIPTION`; each page exports its own `metadata.title`. Robots/`noindex` stay hard-coded.

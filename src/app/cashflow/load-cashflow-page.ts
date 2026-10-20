@@ -1,6 +1,7 @@
 import { buildCashflowReport, type CashflowReport } from "@/lib/analytics/cashflow";
 import { convertCashflowTransactions } from "@/lib/market-data/cashflow";
 import { createMarketData } from "@/lib/market-data/prices";
+import { scaleCashflowWorkbook } from "@/lib/demo/scale";
 import { loadCashflowWorkbook } from "@/lib/sheets/cashflow";
 import type { CashflowWorkbook } from "@/types/workbook";
 
@@ -8,10 +9,10 @@ export type CashflowPageData =
   | { currency: string; reports: Record<string, CashflowReport>; error: null }
   | { currency: null; reports: null; error: string };
 
-/** Loads the workbook and builds one cashflow report per reporting currency (`CURRENCY_1` is the default). */
-export async function loadCashflowPage(loadWorkbook: () => Promise<CashflowWorkbook> = loadCashflowWorkbook): Promise<CashflowPageData> {
+/** Loads the workbook and builds one cashflow report per reporting currency (`CURRENCY_1` is the default). Amounts are scaled by `multiplier` (1 = real values). */
+export async function loadCashflowPage(loadWorkbook: () => Promise<CashflowWorkbook> = loadCashflowWorkbook, multiplier = 1): Promise<CashflowPageData> {
   try {
-    const workbook = await loadWorkbook();
+    const workbook = scaleCashflowWorkbook(await loadWorkbook(), multiplier);
     const market = createMarketData();
     const reports = await Promise.all(workbook.reportingCurrencies.map(async (currency) => {
       const transactions = await convertCashflowTransactions(market, workbook.transactions, currency);

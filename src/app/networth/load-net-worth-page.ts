@@ -11,6 +11,7 @@ import { loadBenchmarkPrices } from "@/lib/market-data/benchmark";
 import { convertCashflowTransactions } from "@/lib/market-data/cashflow";
 import { loadFinancialPriceIncreases, valueNetWorth } from "@/lib/market-data/net-worth";
 import { createMarketData, type MarketData } from "@/lib/market-data/prices";
+import { scaleCashflowWorkbook, scaleNetWorthWorkbook } from "@/lib/demo/scale";
 import { loadCashflowWorkbook } from "@/lib/sheets/cashflow";
 import { loadNetWorthWorkbook } from "@/lib/sheets/net-worth";
 import type { CashflowWorkbook, ConvertedCashflowTransaction, NetWorthWorkbook } from "@/types/workbook";
@@ -64,13 +65,13 @@ async function fillBenchmarkInputs(market: MarketData, report: NetWorthReport, b
   }));
 }
 
-/** Loads the workbooks and local market data and builds everything the net-worth page renders. */
-export async function loadNetWorthPage(
-  sources: NetWorthPageSources = { netWorth: loadNetWorthWorkbook, cashflow: loadCashflowWorkbook },
-): Promise<NetWorthPageData> {
+export const defaultNetWorthSources: NetWorthPageSources = { netWorth: loadNetWorthWorkbook, cashflow: loadCashflowWorkbook };
+
+/** Loads the workbooks and local market data and builds everything the net-worth page renders. Amounts are scaled by `multiplier` (1 = real values). */
+export async function loadNetWorthPage(sources: NetWorthPageSources = defaultNetWorthSources, multiplier = 1): Promise<NetWorthPageData> {
   try {
     const market = createMarketData();
-    const workbook = await sources.netWorth();
+    const workbook = scaleNetWorthWorkbook(await sources.netWorth(), multiplier);
     const report = buildNetWorthReport(await valueNetWorth(market, workbook));
     const financialPriceIncreases = await loadFinancialPriceIncreases(market, workbook, report.periods);
     // Reuse the report when it already has both hall-of-fame currencies; otherwise value and total again.
@@ -90,7 +91,7 @@ export async function loadNetWorthPage(
     let growthSeries: NetWorthGrowthPoint[][] | null = null;
     let hallOfFame: HallOfFameMetric[] | null = null;
     try {
-      const cashflow = await loadConvertedCashflow(market, report, sources.cashflow);
+      const cashflow = await loadConvertedCashflow(market, report, async () => scaleCashflowWorkbook(await sources.cashflow(), multiplier));
       growthSeries = cashflow.converted.map((transactions, index) =>
         buildNetWorthGrowthSeries(report, transactions, financialPriceIncreases, index),
       );

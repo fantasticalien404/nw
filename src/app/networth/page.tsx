@@ -1,6 +1,7 @@
 import { NetWorthPortfolio } from "@/components/net-worth/net-worth-portfolio";
 import { connection } from "next/server";
-import { loadNetWorthPage } from "./load-net-worth-page";
+import { resolveMultiplier } from "@/lib/auth/access";
+import { defaultNetWorthSources, loadNetWorthPage } from "./load-net-worth-page";
 
 export const metadata = { title: "Net worth" };
 
@@ -8,7 +9,7 @@ export const instant = false;
 
 export default async function NetWorthPage() {
   await connection();
-  const { report, benchmarkInputs, growthSeries, hallOfFame, error } = await loadNetWorthPage();
+  const { report, benchmarkInputs, growthSeries, hallOfFame, error } = await loadNetWorthPage(defaultNetWorthSources, await resolveMultiplier());
 
   if (error || !report) {
     return (

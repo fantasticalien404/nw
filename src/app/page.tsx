@@ -1,6 +1,8 @@
 import { CashflowDashboard } from "@/components/cashflow/cashflow-dashboard";
 import { today } from "@/lib/dates";
 import { connection } from "next/server";
+import { resolveMultiplier } from "@/lib/auth/access";
+import { loadCashflowWorkbook } from "@/lib/sheets/cashflow";
 import { loadCashflowPage } from "./cashflow/load-cashflow-page";
 
 export const metadata = { title: "Cashflow" };
@@ -9,7 +11,7 @@ export const instant = false;
 
 export default async function CashflowPage() {
   await connection();
-  const { currency, reports, error } = await loadCashflowPage();
+  const { currency, reports, error } = await loadCashflowPage(loadCashflowWorkbook, await resolveMultiplier());
 
   if (error || !reports || !currency) {
     return (
