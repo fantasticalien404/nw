@@ -323,7 +323,7 @@ System-wide constants. Each row has a key in column A and its value in column B;
 | CURRENCY_1 | CHF | Primary report currency (required). `CURRENCY_2` and `CURRENCY_3` are optional |
 | CURRENCY_2 | EUR | Second report currency |
 | CURRENCY_3 | USD | Third report currency |
-| APP_NAME | Net Worth | Site name: default page title and the suffix of every page title (`Cashflow · Net Worth`). Read by the app |
+| APP_NAME | Net Worth | Site name: default page title and the prefix of every page title (`Net Worth Cashflow`). Read by the app |
 | APP_DESCRIPTION | Private personal-wealth dashboard | `<meta name="description">`. Read by the app |
 | ALLOWED_EMAILS | you@gmail.com, partner@gmail.com | Google accounts that see real values. Read by the app (server-side only) |
 | LUCKY_SEED | a long secret phrase | A demo seed that unlocks real values for anyone who enters it. Read by the app (server-side only) |
@@ -462,7 +462,7 @@ The form posts to the `setDemoSeed` server action (`src/lib/auth/demo-seed.ts`).
 - **`"use server"` files may only export async functions**, so the cookie name, default seed and length limit live in `access.ts`, not in `demo-seed.ts`.
 - **Loader signatures.** `loadCashflowPage(loadWorkbook = loadCashflowWorkbook, getMultiplier = () => 1)` and `loadNetWorthPage(sources = defaultNetWorthSources, getMultiplier = () => 1)`. `getMultiplier` is a function (sync or async) and runs inside the loader's `try`: when it throws, the page shows the message in its error box instead of crashing with HTTP 500. The pages pass `resolveMultiplier` itself. The defaults keep the existing tests unchanged; `defaultNetWorthSources` is exported so the page can pass a multiplier function without redefining the sources.
 - **`parseConstants` now keeps text as typed.** Before, every value was upper-cased as a currency; now only `CURRENCY_*` values are normalized. Text keys (`APP_NAME`, `APP_DESCRIPTION`, `ALLOWED_EMAILS`, `LUCKY_SEED`) keep their case.
-- **Site metadata.** The root layout uses `generateMetadata` with `title: { default: APP_NAME, template: "%s · APP_NAME" }`; each page exports its own `metadata.title` (`Cashflow`, `Net worth`, `SAA`, `Monte Carlo`, `Docs`, `Privacy policy`, `Terms of service`). Settings come from a cached loader that falls back to defaults on error.
+- **Site metadata.** The root layout uses `generateMetadata` with `title: { default: APP_NAME, template: "APP_NAME %s" }`; each page exports its own `metadata.title` (`Cashflow`, `Net worth`, `SAA`, `Monte Carlo`, `Docs`, `Privacy policy`, `Terms of service`). Settings come from a cached loader that falls back to defaults on error.
 - **Dependency.** `next-auth@beta` (5.0.0-beta.32) was added to `package.json`.
 
 ### Tests

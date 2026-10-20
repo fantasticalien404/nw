@@ -74,7 +74,7 @@ No header row. Column A is the key and column B is the value. Keys are unique, u
 | `CURRENCY_1` | Required reporting currency. `CURRENCY_2` and `CURRENCY_3` are optional. |
 | `ALLOWED_EMAILS` | Comma-separated Google accounts allowed to see real data (see Authentication). One row, one cell. Never one row per email: duplicate keys overwrite each other. Read server-side only. |
 | `LUCKY_SEED` | A demo seed that unlocks real values for anyone who enters it. Optional; use a long phrase. Read server-side only, never sent to the client. |
-| `APP_NAME` | Site name: default page title and the suffix of every page title. Read by the app (default `Net Worth`). |
+| `APP_NAME` | Site name: default page title and the prefix of every page title (`Giacomo's Cashflow`). Read by the app (default `Net Worth`). |
 | `APP_DESCRIPTION` | `<meta name="description">`. Read by the app (default `Private personal-wealth dashboard`). |
 | `LOCALE` | `<html lang>`, for example `en`. Not read by the app yet. |
 

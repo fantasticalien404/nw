@@ -1,11 +1,17 @@
+import type { Metadata } from "next";
 import { CashflowDashboard } from "@/components/cashflow/cashflow-dashboard";
 import { today } from "@/lib/dates";
 import { connection } from "next/server";
 import { resolveMultiplier } from "@/lib/auth/access";
 import { loadCashflowWorkbook } from "@/lib/sheets/cashflow";
 import { loadCashflowPage } from "./cashflow/load-cashflow-page";
+import { loadCachedAppSettings } from "./load-app-settings";
 
-export const metadata = { title: "Cashflow" };
+// The root layout template does not apply to the page of its own segment, so the home page builds its full title.
+export async function generateMetadata(): Promise<Metadata> {
+  const { appName } = await loadCachedAppSettings();
+  return { title: { absolute: `${appName} Cashflow` } };
+}
 
 export const instant = false;
 
