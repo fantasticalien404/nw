@@ -89,14 +89,14 @@ Google Sheets + data/market-data → lib/sheets + lib/market-data → lib/analyt
 ```
 
 - `lib/sheets` is the only location for Google Sheets I/O, schemas, date parsing, and workbook normalization.
-- `lib/market-data` reads local price and FX files from `data/market-data`; it must not make runtime market-data requests.
+- `lib/market-data` reads local price and FX files from `data/market-data`; it must not make runtime market-data requests. A price file that ends before today is used as it is; the "current" value is its last close.
 - `lib/analytics` contains pure, deterministic report builders. Do not put I/O, React code, or environment access there.
 - `src/app` pages are server components that compose loaders, market-data conversion, and analytics, then provide serializable reports to UI components.
 - `src/components` renders the reports. Client components may own Recharts interaction state but never fetch financial data.
 
 ### Implemented routes
 
-- `/networth`: parses `assets`, `metadata`, and `constants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend and the asset summary table (fixed January–December columns, see Summary table layout).
+- `/networth`: parses `assets`, `metadata`, and `constants`; prices quantity rows with local historical/current prices; converts values using local historical/current FX; renders the net-worth trend, the asset summary table (fixed January–December columns, see Summary table layout), the growth table, monthly rankings and the benchmark comparison. Implementation details of every report are in `docs/how-it-works.md`.
 - `/saa`, `/montecarlo`, `/docs`, `/privacy`, `/ts`: empty "Coming soon" placeholders. `/privacy` (privacy policy) and `/ts` (terms of service) are linked from Google's consent screen; they are not in the navbar and need real text before the OAuth app is published.
 - `/api/auth/*`: Auth.js endpoints (`src/app/api/auth/[...nextauth]/route.ts`). There are no financial-data API routes yet.
 - `/` (`/cashflow` redirects to it): parses `cashflow`, `categories`, and `constants`; converts each transaction to `CURRENCY_1` at its local historical FX rate; excludes contributions; reports the latest transaction year from January through December. Missing/future months are `null`, displayed as `—`, and charted as gaps.
@@ -161,7 +161,7 @@ The Sheets service account (server reads the workbook) and the OAuth client (use
 3. Audience: user type **External**. Publishing status **Testing** lists the only accounts that can sign in (*Test users*, max 100); other accounts get `access_denied`. **Publish app** moves it to *In production* so any Google account can sign in, with no verification needed for basic scopes. Publishing is safe for real data only because the allowlist is enforced in the backend.
 4. Data access: keep the default scopes `openid`, `userinfo.email`, `userinfo.profile`. Never add Sheets or Drive scopes: the workbook is read only by the service account.
 5. Clients → Create client → **Web application**. Leave JavaScript origins empty. Redirect URIs, matched exactly (protocol, host, port, no trailing slash): `http://localhost:3000/api/auth/callback/google` and `https://<domain>/api/auth/callback/google`.
-6. Copy the client ID and secret into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`; Google may not show the secret again. `AUTH_SECRET` is a random string (`openssl rand -base64 32`), different in production. Set `AUTH_TRUST_HOST=true` on a proxied host. `README.md` has the full walkthrough and the troubleshooting table.
+6. Copy the client ID and secret into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`; Google may not show the secret again. `AUTH_SECRET` is a random string (`openssl rand -base64 32`), different in production. Set `AUTH_TRUST_HOST=true` on a proxied host. `README.md` (step 8) and `docs/appendix.md` (section E) have the full walkthrough; `docs/troubleshooting.md` has the troubleshooting table.
 7. Never print, commit, or paste the client secret, `AUTH_SECRET`, or any other environment value.
 
 ### Allowlist
@@ -187,7 +187,7 @@ Visitors who are not allowlisted and have not entered `LUCKY_SEED` see every mon
 - `DEMO_SALT` is required; a missing salt must fail loudly, never fall back to real values.
 - Gotchas: read the seed cookie with `||`, not `??` (a cookie deleted in the same request reads back as `""`); `"use server"` files may export only async functions, so shared constants live in `lib/auth/access.ts`; session or cookie readers need `connection()` plus `Suspense`; the cached access settings return empty on a failed read so access fails closed.
 - Tests: `tests/demo-access.test.ts` covers the multiplier, scaling, the loader with a factor and the access-key parser; update it with any change to them.
-- Known limits (also in README): ratios stay real, and trying many seeds lets someone estimate the real amounts (the maximum factor approaches `DEMO_MULTIPLIER_MAX`, so the largest observation divided by it gives the real amount). Do not describe the demo as protecting the data; if stronger privacy is needed, hide ratios, names and accounts or use a fixed $100{,}000$ synthetic portfolio.
+- Known limits (also in `docs/appendix.md`, section B): ratios stay real, and trying many seeds lets someone estimate the real amounts (the maximum factor approaches `DEMO_MULTIPLIER_MAX`, so the largest observation divided by it gives the real amount). Do not describe the demo as protecting the data; if stronger privacy is needed, hide ratios, names and accounts or use a fixed $100{,}000$ synthetic portfolio.
 
 ## Backend and market data
 
@@ -222,17 +222,18 @@ src/
   types/                  # Shared domain and API types
 scripts/                  # Workbook checks and market-data downloader
 data/market-data/         # Downloaded ticker and FX price files
+docs/                     # Appendix, workbook reference, how it works, troubleshooting
 public/                   # Static assets
 STYLE.MD                  # Frontend visual-system decisions
 CLAUDE.md                 # Agent instructions and technical constraints
-README.md                 # Product and workbook documentation
+README.md                 # Product overview and setup walkthrough
 ```
 
 Keep Google Sheets I/O in `lib/sheets`, local price reads in `lib/market-data`, and Yahoo download I/O in `scripts/download-market-data.ts`. Keep calculations in pure `lib/analytics` functions. Do not put Google Sheets or market-data calls in React components.
 
 ## Frontend style
 
-Follow [STYLE.MD](/Users/giacomomaggiore/Desktop/coding/nw/STYLE.MD) when it exists. It will define visual direction, typography, color, spacing, chart conventions, responsive behavior, and component patterns. Until then, keep UI choices simple, consistent, and accessible.
+Follow [STYLE.MD](STYLE.MD) when it exists. It will define visual direction, typography, color, spacing, chart conventions, responsive behavior, and component patterns. Until then, keep UI choices simple, consistent, and accessible.
 
 Use Recharts for every interactive data visualization.
 
@@ -241,8 +242,8 @@ Use Recharts for every interactive data visualization.
 Primary pages:
 
 1. Home overview: net worth, monthly cash flow, savings rate, portfolio value, allocation drift, FIRE progress.
-2. Cashflow dashboard (`/cashflow`): keep contributions separate from income and expenses. The summary table always shows all January–December months of the year chosen in its dropdown (the latest transaction year by default); missing/future values are `—`. Include income, parent-category expense, savings, and savings-rate tables with total and monthly-average columns. Monthly averages end at the previous month. Show monthly income/expense, parent-category area, savings-rate, and current-year cumulative income-versus-expense charts.
-3. Net worth dashboard (`/nw`): show financial instruments, cash assets, and other assets in separate table sections. The first columns are asset name, ticker, and currency; subsequent columns are the twelve fixed January–December month columns of the year chosen in a dropdown (see Summary table layout): a month shows its reporting-period values, or `—` when it has none. A final `Current` column follows December when the current date is in the selected year; the current period is compared with the latest valued period. The current period uses the latest downloaded prices; cash and manually valued assets use their latest reported values. Quantity rows use `metadata.DISPLAY_NAME`, then `metadata.FULL_NAME`. Use local historical prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if local market data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display absolute and percentage period-over-period changes in `CURRENCY_1`. Include a benchmark comparison using financial instruments only (quantity assets): cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments; distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals, so refresh market data and review data-quality warnings before relying on results. Provide selectable 60/40 or 100% stocks, reporting currency and rebalancing interval, contributions invested at the start of the following month, withdrawals from `cashflow`, contribution markers, and annualized money-weighted IRR. Cashflows dated after the latest reported holdings are not replayed into the benchmark, because the current portfolio value still uses those holdings.
+2. Cashflow dashboard (`/`; `/cashflow` redirects to it): keep contributions separate from income and expenses. The summary table always shows all January–December months of the year chosen in its dropdown (the latest transaction year by default); missing/future values are `—`. Include income, parent-category expense, savings, and savings-rate tables with total and monthly-average columns. Monthly averages end at the previous month. Show monthly income/expense, parent-category area, savings-rate, and current-year cumulative income-versus-expense charts.
+3. Net worth dashboard (`/networth`): show financial instruments, cash assets, and other assets in separate table sections. The first columns are asset name, ticker, and currency; subsequent columns are the twelve fixed January–December month columns of the year chosen in a dropdown (see Summary table layout): a month shows its reporting-period values, or `—` when it has none. A final `Current` column follows December when the current date is in the selected year; the current period is compared with the latest valued period. The current period uses the latest downloaded prices; cash and manually valued assets use their latest reported values. Quantity rows use `metadata.DISPLAY_NAME`, then `metadata.FULL_NAME`. Use local historical prices and FX rates for historical periods. Show missing values as `—`; show a data-quality warning if local market data is unavailable. Add totals in `CURRENCY_1`, `CURRENCY_2`, and `CURRENCY_3`; if either secondary currency is absent or invalid, fill in order from `EUR`, `CHF`, and `USD`, excluding `CURRENCY_1`. Display plain numeric values without currency symbols; identify currency only in total-row labels and the current-net-worth heading. Under totals, display absolute and percentage period-over-period changes in `CURRENCY_1`. Include a benchmark comparison using financial instruments only (quantity assets): cash and manually valued assets are excluded. This assumes income distributions are reinvested in the tracked instruments; distributing ETF dividends held as broker cash understate portfolio returns. Missing local prices can understate financial totals, so refresh market data and review data-quality warnings before relying on results. Provide selectable 60/40 or 100% stocks, reporting currency and rebalancing interval, contributions invested at the start of the following month, withdrawals from `cashflow`, contribution markers, and annualized money-weighted IRR. Cashflows dated after the latest reported holdings are not replayed into the benchmark, because the current portfolio value still uses those holdings.
 4. Portfolio performance and allocation: benchmark comparison, contributions, returns, target versus actual allocation, drift, and eventual look-through exposure.
 5. Monte Carlo: FIRE success probability, terminal-value distribution, sequence-of-returns scenarios, Value at Risk, and configurable assumptions.
 6. Admin/settings outside the main navbar: data refresh, constants, benchmark, cache, and data-quality checks.
@@ -254,5 +255,5 @@ Primary pages:
 - Run `npm run test:sheets` after changes to Sheets parsing or workbook validation.
 - Run `npm run lint` and `npm test` for code changes. Tests live in `tests/*.test.ts(x)` (`node:test` through `tsx`), use synthetic data only, and need no environment variables. Add or update a test with every parser, analytics, or market-data change.
 - Do not print or commit environment values, service-account keys, OAuth client secrets, or spreadsheet identifiers.
-- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, so keep the repository private. Before deploying, set `DEMO_SALT`, fill `ALLOWED_EMAILS` (and optionally a long `LUCKY_SEED`) in `constants`, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
+- Deployment: `data/market-data` is tracked in git, so a host that deploys from the repository already has the price files; the file names are the held tickers, which is accepted, so the repository may be public. Before deploying, set `DEMO_SALT`, fill `ALLOWED_EMAILS` (and optionally a long `LUCKY_SEED`) in `constants`, and write the real `/privacy` and `/ts` pages before publishing the OAuth app.
 - The root layout builds `<title>` and description from `APP_NAME` / `APP_DESCRIPTION`; each page exports its own `metadata.title`. Robots/`noindex` is hard-coded in `generateMetadata` (`robots: { index: false, follow: false }`). Environment changes need a restart of the dev server; `next start` additionally needs `AUTH_TRUST_HOST=true`.

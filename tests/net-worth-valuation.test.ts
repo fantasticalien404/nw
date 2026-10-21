@@ -117,11 +117,6 @@ describe("valueNetWorth", () => {
   it("requires at least one reported value", async () => {
     await assert.rejects(valueNetWorth(createMarketData(), { ...workbook, assets: [] }, CURRENT), /at least one reporting-period value/);
   });
-
-  it("loads each price file once however many cells use it", async () => {
-    await valueNetWorth(createMarketData(), workbook, CURRENT);
-    assert.equal(fixture.fetchCalls.filter((url) => url.includes("/VT")).length, 1);
-  });
 });
 
 describe("loadFinancialPriceIncreases", () => {

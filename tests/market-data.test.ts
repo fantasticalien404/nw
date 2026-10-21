@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { addDays, today } from "@/lib/dates";
 import { createMarketData } from "@/lib/market-data/prices";
-import { setupMarketData, yahooResponse } from "./support/market-data-fixture";
+import { setupMarketData } from "./support/market-data-fixture";
 
 let fixture: ReturnType<typeof setupMarketData>;
 afterEach(() => fixture?.cleanup());
@@ -50,43 +49,11 @@ describe("market data lookups", () => {
     await assert.rejects(market.price("NOPE", "2026-01-01"), /Download market data for NOPE with npm run download:market-data\./);
     await assert.rejects(market.fxRate("EUR", "CHF", "2026-01-01"), /Download market data for EURCHF=X/);
   });
-});
 
-describe("market data top-up", () => {
-  const stale = addDays(today(), -5);
-
-  beforeEach(() => {
-    fixture = setupMarketData({ ACWI: [[addDays(stale, -1), 100], [stale, 101]] });
-  });
-
-  it("merges prices downloaded since the local file ends", async () => {
-    fixture.respondWith(() => yahooResponse([[today(), 777]]));
+  it("never requests market data at runtime, even when the local files end before today", async () => {
     const market = createMarketData();
-    assert.equal(await market.latestPrice("ACWI"), 777);
-    assert.equal(await market.price("ACWI", stale), 101);
-    assert.match(fixture.fetchCalls[0], /ACWI/);
-  });
-
-  it("keeps the local prices when the download fails", async () => {
-    const market = createMarketData();
-    assert.equal(await market.latestPrice("ACWI"), 101);
-  });
-
-  it("downloads a symbol once per market instance, however many lookups follow", async () => {
-    fixture.respondWith(() => yahooResponse([[today(), 777]]));
-    const market = createMarketData();
-    await Promise.all(Array.from({ length: 50 }, () => market.price("ACWI", stale)));
     await market.latestPrice("ACWI");
-    await market.history("ACWI", stale, today());
-    assert.equal(fixture.fetchCalls.length, 1);
-    await createMarketData().latestPrice("ACWI");
-    assert.equal(fixture.fetchCalls.length, 2, "a new instance (a new request) fetches again");
-  });
-
-  it("does not download when the local file already reaches today", async () => {
-    fixture.cleanup();
-    fixture = setupMarketData({ ACWI: [[today(), 100]] });
-    await createMarketData().latestPrice("ACWI");
+    await market.latestFxRate("USD", "CHF");
     assert.equal(fixture.fetchCalls.length, 0);
   });
 });

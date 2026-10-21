@@ -21,7 +21,7 @@ typed workbook (cashflow / net worth)  ──►  lib/market-data: prices, FX, v
 Rules that keep the layers apart:
 
 - `src/lib/sheets` is the only place that talks to Google Sheets. It parses and validates; it does not calculate.
-- `src/lib/market-data` reads the local price files and converts workbook data into valued, single-currency inputs. Yahoo Finance is called by the downloader script and by one runtime top-up path in `prices.ts`.
+- `src/lib/market-data` reads the local price files and converts workbook data into valued, single-currency inputs. Yahoo Finance is called only by the downloader script.
 - `src/lib/analytics` contains pure functions: no I/O, no React, no environment access.
 - Route pages are server components. A loader (`load-*-page.ts`) composes workbook loading, market-data conversion and analytics, and hands serializable reports to client components.
 - Client components own only interaction state (filters, legends, toggles). They never fetch financial data.
@@ -47,7 +47,7 @@ Rules that keep the layers apart:
 | `src/lib/sheets/access-settings.ts` | `ALLOWED_EMAILS` and `LUCKY_SEED` from `constants` |
 | `src/lib/demo/multiplier.ts`, `scale.ts` | Seeded multiplier in [0, 10) (HMAC with `DEMO_SALT`) and the workbook scaling |
 | `src/lib/sheets/validate.ts` | Contract checks behind `npm run test:sheets`; reports every problem with row numbers |
-| `src/lib/market-data/prices.ts` | Local price and FX store: reads files, optional top-up, price and FX lookups |
+| `src/lib/market-data/prices.ts` | Local price and FX store: reads files, price and FX lookups |
 | `src/lib/market-data/net-worth.ts` | Values every asset per period and currency; price changes for the growth sources |
 | `src/lib/market-data/cashflow.ts` | Converts transactions to a reporting currency at their own date |
 | `src/lib/market-data/benchmark.ts` | Daily benchmark prices (ACWI, BND) in a report currency |
@@ -85,10 +85,6 @@ Replacing Yahoo means changing `scripts/download-market-data.ts` and `lib/market
 - **Latest price or FX:** the last row of the series.
 - **Raw closes** value the net-worth table and convert currencies. **Adjusted closes** (total return) drive the benchmark and the year-to-date column.
 - A missing or corrupt file raises `Download market data for <symbol> with npm run download:market-data.`
-
-### Runtime top-up
-
-When a file's last date is before today, `prices.ts` requests the missing days from Yahoo once per symbol per request and merges them in memory. Nothing is written to disk. If the request fails, the local rows are used silently. This is a deviation from the "no runtime market-data requests" rule in CLAUDE.md: it keeps the "current" column fresh without running the downloader, but it makes weekend and holiday renders issue requests and can merge re-based adjusted closes into older rows. Run the downloader regularly instead of relying on it.
 
 ## Backend logic in detail
 

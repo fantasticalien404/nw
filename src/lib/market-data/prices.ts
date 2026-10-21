@@ -1,8 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { nextDay, today } from "@/lib/dates";
 import type { MarketPrice } from "@/types/market-data";
-import { downloadYahooPrices } from "./yahoo";
 
 type PriceFile = {
   symbol: string;
@@ -18,7 +16,7 @@ export function priceFilePath(symbol: string) {
   return join(marketDataDirectory(), `${encodeURIComponent(symbol)}.json`);
 }
 
-async function readLocalPrices(symbol: string): Promise<MarketPrice[]> {
+async function loadPriceSeries(symbol: string): Promise<MarketPrice[]> {
   let contents: string;
   try {
     contents = await readFile(priceFilePath(symbol), "utf8");
@@ -40,32 +38,12 @@ async function readLocalPrices(symbol: string): Promise<MarketPrice[]> {
   return data.prices;
 }
 
-function mergePrices(localPrices: MarketPrice[], downloadedPrices: MarketPrice[]) {
-  const pricesByDate = new Map(localPrices.map((price) => [price.date, price]));
-  for (const price of downloadedPrices) pricesByDate.set(price.date, price);
-  return [...pricesByDate.values()].sort((left, right) => left.date.localeCompare(right.date));
-}
-
-/** The local file, topped up from Yahoo through today when it is behind. A failed top-up keeps the local prices. */
-async function loadPriceSeries(symbol: string) {
-  const localPrices = await readLocalPrices(symbol);
-  const latestLocalDate = localPrices.at(-1)?.date;
-  const end = nextDay(today());
-  if (!latestLocalDate || end <= nextDay(latestLocalDate)) return localPrices;
-
-  try {
-    return mergePrices(localPrices, await downloadYahooPrices(symbol, nextDay(latestLocalDate), end));
-  } catch {
-    return localPrices;
-  }
-}
-
 function inRange(prices: MarketPrice[], start: string, end: string) {
   return prices.filter((price) => price.date >= start && price.date < end);
 }
 
 /**
- * Price and FX lookups for one request. Each symbol is read (and topped up) once; every later lookup is
+ * Price and FX lookups for one request. Each symbol is read once; every later lookup is
  * answered from memory. Create one per page render and pass it to the loaders.
  */
 export function createMarketData() {
